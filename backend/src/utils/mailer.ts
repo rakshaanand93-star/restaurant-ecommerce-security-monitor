@@ -1,43 +1,41 @@
-import nodemailer from 'nodemailer';
-import dns from 'dns';
+// Removed nodemailer and dns to use native fetch with Resend API
 
-// Force Node.js to prioritize IPv4 over IPv6 when resolving addresses
-// This prevents ENETUNREACH errors in environments without IPv6 routing
-dns.setDefaultResultOrder('ipv4first');
-
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
-  });
-};
-
-const sendMailSafely = async (mailOptions: nodemailer.SendMailOptions) => {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.warn(`[Mailer] SMTP credentials not configured. Skipping email to ${mailOptions.to}`);
+const sendMailSafely = async (mailOptions: { to: string; subject: string; text: string; html?: string }) => {
+  // Fallback to the provided key if process.env.RESEND_API_KEY is not set
+  const RESEND_API_KEY = process.env.RESEND_API_KEY || 're_g2p7QrZw_MAm6P8AQdPmi33WAWB2ngNGj';
+  
+  if (!RESEND_API_KEY) {
+    console.warn(`[Mailer] Resend API key not configured. Skipping email to ${mailOptions.to}`);
     return false;
   }
 
   try {
-    const transporter = createTransporter();
-
-    const info = await transporter.sendMail({
-      from: `"SecureGuard AI" <${process.env.SMTP_USER}>`,
-      ...mailOptions
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RESEND_API_KEY}`
+      },
+      body: JSON.stringify({
+        from: 'SecureGuard AI <onboarding@resend.dev>', // Resend Free Tier requires this specific sender
+        to: [mailOptions.to],
+        subject: mailOptions.subject,
+        text: mailOptions.text,
+        html: mailOptions.html
+      })
     });
 
-    console.log(`[Mailer] Successfully sent email to ${mailOptions.to}. Message ID: ${info.messageId}`);
-    return true;
+    const data = await response.json();
+
+    if (response.ok) {
+      console.log(`[Mailer] Successfully sent email to ${mailOptions.to}. Resend ID: ${data.id}`);
+      return true;
+    } else {
+      console.error(`[Mailer] Resend API Error for ${mailOptions.to}:`, JSON.stringify(data));
+      return false;
+    }
   } catch (error) {
-    console.error(`[Mailer] Failed to send email to ${mailOptions.to}:`, error);
+    console.error(`[Mailer] Failed to execute fetch to Resend for ${mailOptions.to}:`, error);
     return false;
   }
 };
