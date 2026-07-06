@@ -1,15 +1,1 @@
-import { getFirebaseAuth, initializeFirebase } from './src/config/firebase';
-
-async function test() {
-  try {
-    initializeFirebase();
-    const list = await getFirebaseAuth().listUsers(10);
-    console.log("Users in Firebase:", list.users.map(u => ({ uid: u.uid, email: u.email })));
-    process.exit(0);
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
-  }
-}
-
-test();
+import { initializeFirebase, getFirebaseAuth } from './src/config/firebase'; async function run() { initializeFirebase(); const auth = getFirebaseAuth(); try { const u1 = await auth.getUserByEmail('warehouse1@gmail.com'); console.log('W1:', u1.toJSON()); const u2 = await auth.getUserByEmail('warehouse2@gmail.com'); console.log('W2:', u2.toJSON()); } catch (e) { console.error(e); } process.exit(0); } run();

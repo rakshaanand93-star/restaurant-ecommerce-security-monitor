@@ -130,6 +130,18 @@ router.post('/', async (req: Request, res: Response) => {
         await newUser.save();
         console.log('✓ MongoDB user created');
         console.log('✓ Synchronization completed');
+
+        // Generate Admin Notification
+        const employeeComp = newUser.company || 'system';
+        await Notification.create({
+          title: 'New Employee Created',
+          message: `Employee ${newUser.email} has been added to the system.`,
+          type: 'info',
+          severity: 'info',
+          company: employeeComp.toLowerCase(),
+          employeeName: newUser.displayName || newUser.email.split('@')[0]
+        });
+
         return res.status(201).json(newUser);
       }
     } catch (mongoError: any) {
@@ -227,6 +239,18 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     console.log('✓ Synchronization completed');
+
+    // Generate Admin Notification
+    const employeeComp = mongoUser.company || 'system';
+    await Notification.create({
+      title: 'Employee Deleted',
+      message: `Employee ${mongoUser.email} has been deleted from the system.`,
+      type: 'warning',
+      severity: 'warning',
+      company: employeeComp.toLowerCase(),
+      employeeName: mongoUser.displayName || mongoUser.email.split('@')[0]
+    });
+
     return res.status(200).json({ message: 'User completely deleted from all systems' });
   } catch (error: any) {
     console.error('Delete user error:', error);
@@ -241,7 +265,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 // Update a user's profile information (e.g. location, status)
 router.put('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { location, status, company } = req.body;
+  const { location, status, company, displayName, photoURL, profile, settings } = req.body;
   
   if (!id) {
     return res.status(400).json({ error: 'Missing id' });
@@ -259,6 +283,18 @@ router.put('/:id', async (req: Request, res: Response) => {
     const updateData: any = {};
     if (location !== undefined) updateData.location = location;
     if (status !== undefined) updateData.status = status;
+    if (displayName !== undefined) updateData.displayName = displayName;
+    if (photoURL !== undefined) updateData.photoURL = photoURL;
+    
+    // For nested objects like profile and settings, we can either merge or replace.
+    // Assuming replace for simplicity as per standard PUT, or shallow merge if we prefer.
+    // The safest is to update the fields provided within profile and settings.
+    if (profile) {
+      updateData.profile = { ...currentUser.profile, ...profile };
+    }
+    if (settings) {
+      updateData.settings = { ...currentUser.settings, ...settings };
+    }
 
     const updatedUser = await User.findByIdAndUpdate(
       id,
@@ -276,6 +312,10 @@ router.put('/:id', async (req: Request, res: Response) => {
       const firestoreUpdate: any = {};
       if (location !== undefined) firestoreUpdate.location = location;
       if (status !== undefined) firestoreUpdate.isDisabled = status === 'inactive' || status === 'suspended';
+      if (displayName !== undefined) firestoreUpdate.displayName = displayName;
+      if (photoURL !== undefined) firestoreUpdate.photoURL = photoURL;
+      
+      if (profile && profile.phone !== undefined) firestoreUpdate.phoneNumber = profile.phone;
       
       if (Object.keys(firestoreUpdate).length > 0) {
         await getFirebaseFirestore().collection('users').doc(firebaseUid).update(firestoreUpdate);
@@ -320,9 +360,18 @@ router.get('/:uid/performance', async (req: Request, res: Response) => {
     }
 
     // 1. Fetch Orders for this employee
+    // Map Firebase UIDs to backend REST IDs for Zomato
+    const RESTAURANT_MAP: Record<string, string> = {
+      'kzneP1VWIxeO92fdDT1W0ha7bzn2': 'REST-1001',
+      'As6u7IHApvVMRCbk77U3L05OYwH2': 'REST-1002',
+      'T4OH3Vmlh9hezkBa6MKytiryNV73': 'REST-1003'
+    };
+    
+    const targetEmployeeId = user.firebaseUid ? (RESTAURANT_MAP[user.firebaseUid] || user.firebaseUid) : user._id.toString();
+
     // Using dynamic import or standard import for Order model
     const Order = (await import('../models/Order')).default;
-    const orders = await Order.find({ employeeId: user.firebaseUid || user._id.toString() });
+    const orders = await Order.find({ employeeId: targetEmployeeId });
 
     const totalOrders = orders.length;
     const successful = orders.filter(o => o.status === 'delivered' || o.status === 'completed').length;
@@ -336,6 +385,53 @@ router.get('/:uid/performance', async (req: Request, res: Response) => {
       return new Date(o.deliveredAt) > new Date(o.expectedDeliveryDate);
     }).length;
 
+    // ZOMATO SPECIFIC METRICS
+    const prepared = orders.filter(o => o.status === 'prepared' || o.status === 'completed' || o.status === 'delivered').length;
+    const cancelled = orders.filter(o => o.status === 'cancelled').length;
+    
+    // For Zomato, count any order with preparation or delivery delays
+    const delayed = orders.filter(o => o.isPreparationDelayed || o.isDeliveryDelayed).length;
+
+    // Calculate Avg Prep and Delivery Times
+    let totalPrepTimeMinutes = 0;
+    let prepTimeCount = 0;
+    let totalDeliveryTimeMinutes = 0;
+    let deliveryTimeCount = 0;
+
+    orders.forEach(o => {
+      if (o.preparedAt && o.acceptedAt) {
+        const diffMs = o.preparedAt.getTime() - o.acceptedAt.getTime();
+        const diffMins = diffMs / 60000;
+        if (diffMins >= 0 && diffMins < 60 * 24) { 
+          totalPrepTimeMinutes += diffMins;
+          prepTimeCount++;
+        }
+      }
+
+      if (o.deliveredAt && (o.preparedAt || o.packedAt)) {
+        const startDelivery = o.preparedAt || o.packedAt;
+        if (startDelivery) {
+          const diffMs = o.deliveredAt.getTime() - startDelivery.getTime();
+          const diffMins = diffMs / 60000;
+          if (diffMins >= 0 && diffMins < 60 * 24) {
+            totalDeliveryTimeMinutes += diffMins;
+            deliveryTimeCount++;
+          }
+        }
+      }
+    });
+
+    const avgPrepTime = prepTimeCount > 0 ? Math.round(totalPrepTimeMinutes / prepTimeCount) : 0;
+    const avgDeliveryTimeVal = deliveryTimeCount > 0 ? Math.round(totalDeliveryTimeMinutes / deliveryTimeCount) : 0;
+
+    // Calculate Revenue
+    let revenue = 0;
+    orders.forEach(o => {
+      if ((o.status === 'completed' || o.status === 'delivered') && o.amount) {
+        revenue += Number(o.amount);
+      }
+    });
+
     // Averages
     const successRate = totalOrders > 0 ? ((successful / totalOrders) * 100).toFixed(1) : '0.0';
     const failureRate = totalOrders > 0 ? ((failed / totalOrders) * 100).toFixed(1) : '0.0';
@@ -348,7 +444,12 @@ router.get('/:uid/performance', async (req: Request, res: Response) => {
       return { 
         date: d.toISOString().split('T')[0], 
         completed: 0,
-        failed: 0
+        failed: 0,
+        prepared: 0,
+        cancelled: 0,
+        prepTimeSum: 0,
+        prepCount: 0,
+        avgPrepTime: 0
       };
     });
 
@@ -359,8 +460,28 @@ router.get('/:uid/performance', async (req: Request, res: Response) => {
         if (day) {
           if (o.status === 'delivered' || o.status === 'completed') day.completed++;
           if (o.status === 'failed' || o.status === 'cancelled') day.failed++;
+          
+          if (o.status === 'prepared' || o.status === 'completed' || o.status === 'delivered') {
+            day.prepared++;
+            
+            // Calc prep time for this specific order
+            const endTime = o.preparedAt || o.updatedAt || o.deliveredAt;
+            if (endTime) {
+              const diffMs = new Date(endTime).getTime() - new Date(o.createdAt).getTime();
+              const diffMins = diffMs / (1000 * 60);
+              if (diffMins > 0 && diffMins < 60 * 24) {
+                day.prepTimeSum += diffMins;
+                day.prepCount++;
+              }
+            }
+          }
+          if (o.status === 'cancelled') day.cancelled++;
         }
       }
+    });
+
+    last7Days.forEach(day => {
+      day.avgPrepTime = day.prepCount > 0 ? Math.round(day.prepTimeSum / day.prepCount) : 0;
     });
 
     // 2. Fetch Security Events / Alerts generated by this user
@@ -379,24 +500,60 @@ router.get('/:uid/performance', async (req: Request, res: Response) => {
       ]
     });
 
-    res.json({
+    // 3. Fetch Login Activities
+    const LoginActivity = (await import('../models/LoginActivity')).default;
+    const logins = await LoginActivity.find({
+      $or: [
+        { firebaseUid: user.firebaseUid },
+        { email: user.email }
+      ]
+    }).sort({ loginTime: -1 }).limit(10);
+
+    const responseData = {
+      employeeId: targetEmployeeId,
+      employeeName: user.displayName || user.email.split('@')[0],
+      assignedOrders: totalOrders,
+      acceptedOrders: orders.filter(o => o.status === 'accepted').length,
+      preparingOrders: orders.filter(o => o.status === 'preparing').length,
+      readyOrders: orders.filter(o => o.status === 'ready').length,
+      outForDeliveryOrders: orders.filter(o => o.status === 'out_for_delivery').length,
+      completedOrders: successful,
+      rejectedOrders: cancelled,
+      packing: orders.filter(o => ['accepted', 'preparing', 'ready', 'out_for_delivery', 'completed', 'delivered'].includes(o.status)).length,
+      shipping: orders.filter(o => ['ready', 'out_for_delivery', 'completed', 'delivered'].includes(o.status)).length,
+      delayPacking: orders.filter(o => o.isPackingDelayed).length, 
+      delayShipping: orders.filter(o => o.isShippingDelayed).length,
+      failedDeliveries: failed,
+      successRate: totalOrders > 0 ? Math.round((successful / totalOrders) * 100) : 0,
+      completionRate: totalOrders > 0 ? Math.round((successful / totalOrders) * 100) : 0,
       metrics: {
         totalOrders,
         successful,
+        completed: successful,
         failed,
         pending,
         late,
+        prepared,
+        cancelled,
+        delayed,
+        revenue,
+        avgPrepTime,
         successRate,
         failureRate,
         totalAlerts,
-        avgDeliveryTime: totalOrders > 0 ? '45m' : '0m' // Mocked avg for now unless we calculate based on createdAt vs deliveredAt
+        avgDeliveryTime: `${avgDeliveryTimeVal}m`
       },
       charts: {
-        weeklyPerformance: last7Days
+        weeklyPerformance: last7Days,
+        preparationTimeTrend: last7Days.map(d => ({ date: d.date, avgPrepTime: d.avgPrepTime }))
       },
-      recentOrders: orders.slice(-5).reverse(), // Last 5 orders
-      recentAlerts: alerts
-    });
+      recentOrders: orders.slice(-10).reverse(), // Last 10 orders
+      recentAlerts: alerts,
+      recentLogins: logins
+    };
+
+    console.log("Performance API:", responseData);
+    res.json(responseData);
 
   } catch (error) {
     console.error('Error fetching employee performance:', error);
@@ -430,18 +587,36 @@ router.post('/:uid/seed-orders', async (req: Request, res: Response) => {
       const expectedDelivery = new Date(createdAt);
       expectedDelivery.setHours(expectedDelivery.getHours() + 24);
       
-      const isDelivered = Math.random() > 0.3; // 70% success rate
-      const isFailed = !isDelivered && Math.random() > 0.5; // 15% failed
-      // remaining 15% pending
-      
-      const status = isDelivered ? 'delivered' : (isFailed ? 'failed' : 'pending');
-      
+      let status = 'pending';
       let deliveredAt = undefined;
-      if (isDelivered) {
-        deliveredAt = new Date(createdAt);
-        // Randomly make some late
-        const hoursToAdd = Math.random() > 0.8 ? 48 : 12; 
-        deliveredAt.setHours(deliveredAt.getHours() + hoursToAdd);
+      let preparedAt = undefined;
+
+      if (company === 'zomato') {
+        const r = Math.random();
+        if (r > 0.3) { // 70% prepared
+          status = 'prepared';
+          preparedAt = new Date(createdAt);
+          // prep time between 10 and 45 mins
+          const prepMins = Math.floor(Math.random() * 35) + 10;
+          preparedAt.setMinutes(preparedAt.getMinutes() + prepMins);
+        } else if (r > 0.15) { // 15% cancelled
+          status = 'cancelled';
+        } else if (r > 0.05) { // 10% delayed
+          status = 'delayed';
+        } else { // 5% pending
+          status = 'pending';
+        }
+      } else {
+        const isDelivered = Math.random() > 0.3; // 70% success rate
+        const isFailed = !isDelivered && Math.random() > 0.5; // 15% failed
+        
+        status = isDelivered ? 'delivered' : (isFailed ? 'failed' : 'pending');
+        if (isDelivered) {
+          deliveredAt = new Date(createdAt);
+          // Randomly make some late
+          const hoursToAdd = Math.random() > 0.8 ? 48 : 12; 
+          deliveredAt.setHours(deliveredAt.getHours() + hoursToAdd);
+        }
       }
 
       mockOrders.push({
@@ -454,7 +629,8 @@ router.post('/:uid/seed-orders', async (req: Request, res: Response) => {
         employeeId: uid,
         createdAt,
         expectedDeliveryDate: expectedDelivery,
-        deliveredAt
+        deliveredAt,
+        preparedAt
       });
     }
 

@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     console.log("Notification API called: POST /api/notifications", req.body);
-    const { title, message, type, userEmail, read, company } = req.body;
+    const { title, message, type, userEmail, read, company, severity, relatedOrderId, employeeName } = req.body;
     
     if (!title || !message || !type) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -31,7 +31,10 @@ router.post('/', async (req, res) => {
       type,
       userEmail,
       read: read || false,
-      company: company || 'system'
+      company: company || 'system',
+      severity: severity || 'info',
+      relatedOrderId,
+      employeeName
     });
 
     console.log("Notification saved to MongoDB");
@@ -54,6 +57,34 @@ router.patch('/:id/read', async (req, res) => {
   } catch (error) {
     console.error("Error marking notification as read:", error);
     res.status(500).json({ error: "Failed to update notification" });
+  }
+});
+
+// Mark all notifications as read for a given company
+router.patch('/read-all', async (req, res) => {
+  try {
+    const { company } = req.body;
+    const filter = company ? { company } : {};
+    
+    await Notification.updateMany(filter, { read: true });
+    res.json({ message: "All notifications marked as read." });
+  } catch (error) {
+    console.error("Error marking all notifications as read:", error);
+    res.status(500).json({ error: "Failed to update notifications" });
+  }
+});
+
+// Delete a specific notification
+router.delete('/:id', async (req, res) => {
+  try {
+    const deletedNotification = await Notification.findByIdAndDelete(req.params.id);
+    if (!deletedNotification) {
+      return res.status(404).json({ error: "Notification not found" });
+    }
+    res.json({ message: "Notification deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    res.status(500).json({ error: "Failed to delete notification" });
   }
 });
 

@@ -48,14 +48,6 @@ export const LoginPage: React.FC = () => {
       console.log("LOGIN SUCCESS");
       console.log("CURRENT USER UID:", userCredential.user.uid);
       
-      const securityCheck = await verifyLoginSecurity(userCredential.user.uid, email);
-      if (!securityCheck.allowed) {
-        await auth.signOut();
-        setError(securityCheck.reason || "Login blocked by security policy.");
-        setIsLoading(false);
-        return;
-      }
-
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       console.log("USER DOC EXISTS:", userDoc.exists());
       
@@ -71,6 +63,17 @@ export const LoginPage: React.FC = () => {
 
       const fetchedRole = userData?.role?.toLowerCase() || "user";
       console.log("ROLE FOUND:", fetchedRole);
+      
+      // Skip device approval security check for customers
+      if (fetchedRole !== 'customer') {
+        const securityCheck = await verifyLoginSecurity(userCredential.user.uid, email);
+        if (!securityCheck.allowed) {
+          await auth.signOut();
+          setError(securityCheck.reason || "Login blocked by security policy.");
+          setIsLoading(false);
+          return;
+        }
+      }
       
       setSuccess("Logged in successfully! Redirecting...");
       

@@ -8,6 +8,9 @@ export interface INotification extends Document {
   createdAt: Date;
   userEmail?: string;
   company?: string;
+  severity?: string;
+  relatedOrderId?: string;
+  employeeName?: string;
 }
 
 const notificationSchema = new Schema<INotification>(
@@ -18,6 +21,9 @@ const notificationSchema = new Schema<INotification>(
     read: { type: Boolean, default: false },
     userEmail: { type: String },
     company: { type: String, default: 'system' },
+    severity: { type: String, default: 'info' },
+    relatedOrderId: { type: String },
+    employeeName: { type: String },
   },
   { timestamps: { createdAt: true, updatedAt: false }, collection: 'notifications' }
 );

@@ -43,10 +43,13 @@ const CompanyLoginPage: React.FC = () => {
     setLoadingCompany(company);
     setLoginError(null);
 
+    console.log("=== DEBUG LOGIN FLOW ===");
+    console.log("Email entered by the user:", email);
+
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      console.log("Login success:", user.email);
+      console.log("Firebase signInWithEmailAndPassword result: SUCCESS", user.uid);
 
       // Fetch MongoDB user to verify company
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -57,14 +60,17 @@ const CompanyLoginPage: React.FC = () => {
         mongoUser = await mongoRes.json();
       }
 
+      console.log("MongoDB user document found for " + email + ":", mongoUser);
+
       const mongoCompany = (mongoUser?.company || 'unknown').toLowerCase();
-      console.log("Logged in email:", email);
-      console.log("Firebase UID:", user.uid);
       console.log("Company:", mongoCompany);
+      console.log("Role:", mongoUser?.role);
+      console.log("Warehouse ID:", mongoUser?.warehouseId || mongoUser?._id);
 
       // Ensure they don't cross companies (unless they are admin@secureguard.com which might be global)
       if (mongoCompany !== 'unknown' && email !== 'admin@secureguard.com') {
         if (mongoCompany !== company) {
+          console.log("Validation failure: Company mismatch. Expected", company, "but got", mongoCompany);
           await auth.signOut();
           const niceCompany = mongoCompany === 'amazon' ? 'Amazon' : 'Zomato';
           setLoginError({ company, message: `This account belongs to ${niceCompany}. Please use the ${niceCompany} login.` });
@@ -99,10 +105,10 @@ const CompanyLoginPage: React.FC = () => {
       }
 
       const securityCheck = await verifyLoginSecurity(user.uid, email);
-      console.log("LOGIN SUCCESS");
       console.log("ROLE RECEIVED:", securityCheck.role);
 
       if (!securityCheck.allowed) {
+        console.log("Validation failure: Login blocked by security policy.", securityCheck.reason);
         await auth.signOut();
         setLoginError({ company, message: securityCheck.reason || "Login blocked by security policy." });
         setLoadingCompany(null);
@@ -113,11 +119,16 @@ const CompanyLoginPage: React.FC = () => {
         const destination = `/${activeCompany}/dashboard`;
         console.log("Redirecting to:", destination);
         navigate(destination);
+      } else if (securityCheck.role === 'customer') {
+        console.log(`[LOGIN] Redirecting to: /customer/dashboard`);
+        navigate('/customer/dashboard');
       } else {
         console.log(`[LOGIN] Redirecting to: /user-dashboard`);
         navigate('/user-dashboard');
       }
     } catch (error: any) {
+      console.log("Firebase signInWithEmailAndPassword result: FAILED");
+      console.log("Exact Firebase error code (if any):", error.code);
       console.error(error);
       await logActivity('unknown', email, 'LOGIN_FAILED', error.message);
       let errorMessage = "An error occurred during login.";

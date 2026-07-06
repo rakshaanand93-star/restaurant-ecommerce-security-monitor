@@ -12,6 +12,13 @@ import databaseRoutes from './controllers/databaseController';
 import syncRoutes from './controllers/syncController';
 import notificationRoutes from './controllers/notificationController';
 import loginHistoryRoutes from './controllers/loginHistoryController';
+import orderRoutes from './controllers/orderController';
+import productRoutes from './controllers/productController';
+import categoryRoutes from './controllers/categoryController';
+import customerRoutes from './controllers/customerController';
+import shopRoutes from './controllers/shopController';
+import cartRoutes from './controllers/cartController';
+import emailRoutes from './controllers/emailController';
 import { seedDatabase } from './scripts/seed';
 
 dotenv.config();
@@ -61,6 +68,13 @@ app.use('/api/login-history', loginHistoryRoutes);
 
 import userRoutes from './controllers/userController';
 app.use('/api/users', userRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/customer', customerRoutes);
+app.use('/api/shop', shopRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/email', emailRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

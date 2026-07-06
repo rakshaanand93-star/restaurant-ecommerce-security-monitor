@@ -1,6 +1,7 @@
 import AmazonDashboard from "./pages/AmazonDashboard";
 import ZomatoDashboard from "./pages/ZomatoDashboard";
 import UserDashboard from "./pages/UserDashboard";
+import CustomerDashboard from "./pages/CustomerDashboard";
 import EmployeeDetails from './pages/EmployeeDetails';
 import { AnimatePresence } from "framer-motion";
 import { Routes, Route, Navigate } from "react-router-dom";
@@ -56,7 +57,7 @@ function App() {
         <Route 
           path="/zomato/dashboard" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['admin', 'ADMIN', 'employee', 'EMPLOYEE', 'restaurant', 'RESTAURANT']}>
               <ZomatoDashboard />
             </ProtectedRoute>
           } 
@@ -64,7 +65,7 @@ function App() {
         <Route 
           path="/zomato/dashboard/:tab" 
           element={
-            <ProtectedRoute allowedRoles={['admin', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['admin', 'ADMIN', 'employee', 'EMPLOYEE', 'restaurant', 'RESTAURANT']}>
               <ZomatoDashboard />
             </ProtectedRoute>
           } 
@@ -92,7 +93,7 @@ function App() {
           path="/customer/dashboard" 
           element={
             <ProtectedRoute allowedRoles={['customer', 'CUSTOMER']}>
-              <UserDashboard />
+              <CustomerDashboard />
             </ProtectedRoute>
           } 
         />

@@ -4,6 +4,7 @@ import { Order } from '../models/Order';
 import { SecurityLog } from '../models/SecurityLog';
 import { Warehouse } from '../models/Warehouse';
 import { LoginActivity } from '../models/LoginActivity';
+import { seedShopData } from './seedShop';
 
 export const seedDatabase = async () => {
   try {
@@ -62,6 +63,10 @@ export const seedDatabase = async () => {
       });
       console.log('✓ Seeded LoginActivities collection');
     }
+
+    // Call Shop Data Seeding
+    await seedShopData();
+
   } catch (error) {
     console.error('✗ Failed to seed database:', error);
   }

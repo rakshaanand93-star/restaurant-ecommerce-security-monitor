@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { Bell, Check, X, AlertTriangle, Info, AlertCircle } from 'lucide-react';
+import { Bell, Check, X, AlertTriangle, Info, AlertCircle, Trash2, CheckCircle2 } from 'lucide-react';
 import { logActivity } from '../lib/activityLogger';
 import { createPortal } from 'react-dom';
 
@@ -13,6 +13,9 @@ interface Notification {
   userEmail: string;
   createdAt: any;
   read: boolean;
+  severity?: string;
+  relatedOrderId?: string;
+  employeeName?: string;
 }
 
 export function NotificationCenter() {
@@ -43,7 +46,10 @@ export function NotificationCenter() {
            type: n.type,
            userEmail: n.userEmail,
            createdAt: { toDate: () => new Date(n.createdAt) }, 
-           read: n.read
+           read: n.read,
+           severity: n.severity,
+           relatedOrderId: n.relatedOrderId,
+           employeeName: n.employeeName
         }));
         console.log(`Notification bell received ${fetched.length} notifications`);
         setNotifications(fetched);
@@ -150,6 +156,42 @@ export function NotificationCenter() {
     }
   };
 
+  const markAllAsRead = async () => {
+    try {
+      const activeCompany = company.toLowerCase();
+      await fetch('http://localhost:4000/api/notifications/read-all', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: activeCompany })
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const deleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await fetch(`http://localhost:4000/api/notifications/${id}`, { method: 'DELETE' });
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const getRelativeTime = (dateStr: any) => {
+    if (!dateStr?.toDate) return 'Just now';
+    const date = dateStr.toDate();
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} min ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return `${Math.floor(diffInSeconds / 86400)} days ago`;
+  };
+
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'critical': 
@@ -181,9 +223,16 @@ export function NotificationCenter() {
         >
           <div className="p-4 border-b border-gray-50 flex justify-between items-center bg-gray-50 rounded-t-xl sticky top-0 z-10">
             <h3 className="font-bold text-gray-900">Notifications</h3>
-            {unreadCount > 0 && (
-              <span className="text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{unreadCount} New</span>
-            )}
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button 
+                  onClick={markAllAsRead}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1"
+                >
+                  <CheckCircle2 size={12} /> Mark all read
+                </button>
+              )}
+            </div>
           </div>
           
           <div className="divide-y divide-gray-50">
@@ -205,11 +254,27 @@ export function NotificationCenter() {
                     <div className="mt-0.5">
                       {getTypeIcon(n.type)}
                     </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-900">{n.title}</h4>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <h4 className="text-sm font-semibold text-gray-900">{n.title}</h4>
+                        <button 
+                          onClick={(e) => deleteNotification(n.id, e)}
+                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                       <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{n.message}</p>
+                      
+                      {(n.relatedOrderId || n.employeeName) && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {n.relatedOrderId && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-medium border border-gray-200">Order: {n.relatedOrderId}</span>}
+                          {n.employeeName && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-medium border border-blue-100">{n.employeeName}</span>}
+                        </div>
+                      )}
+
                       <p className="text-[10px] text-gray-400 mt-2">
-                        {n.createdAt?.toDate ? n.createdAt.toDate().toLocaleString() : 'Just now'}
+                        {getRelativeTime(n.createdAt)}
                       </p>
                       
                       {!n.read && n.title.includes('Login Blocked') && (

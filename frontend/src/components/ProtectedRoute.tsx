@@ -42,7 +42,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
       return <Navigate to={`/${activeCompany}/dashboard`} replace />;
     } else if (role.toLowerCase() === 'manager') {
       return <Navigate to="/manager/dashboard" replace />;
-    } else if (role.toLowerCase() === 'employee') {
+    } else if (role.toLowerCase() === 'employee' || role.toLowerCase() === 'restaurant') {
+      const activeCompany = localStorage.getItem('company')?.toLowerCase() || '';
+      if (activeCompany === 'zomato') return <Navigate to="/zomato/dashboard" replace />;
       return <Navigate to="/employee/dashboard" replace />;
     } else if (role.toLowerCase() === 'customer') {
       return <Navigate to="/customer/dashboard" replace />;

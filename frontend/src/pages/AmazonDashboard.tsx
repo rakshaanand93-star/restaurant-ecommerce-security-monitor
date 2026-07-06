@@ -9,7 +9,7 @@ import { useAuth } from '../components/AuthContext';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { 
   Menu, User, LogOut, ChevronDown, 
-  TrendingUp, Users, AlertTriangle, DollarSign, 
+  TrendingUp, Users, AlertTriangle, IndianRupee, 
   Package, Activity, Search, ShieldAlert, ShoppingBag, Truck, Star, Play
 } from 'lucide-react';
 
@@ -27,8 +27,10 @@ export default function AmazonDashboard() {
   const [totalUsers, setTotalUsers] = useState<number>(0);
   const [amazonWarehouse, setAmazonWarehouse] = useState<number>(0);
   const [totalOrders, setTotalOrders] = useState<number>(0);
+  const [pendingOrders, setPendingOrders] = useState<number>(0);
   const [unresolvedAlerts, setUnresolvedAlerts] = useState<number>(0);
   const [revenue, setRevenue] = useState<number>(0);
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activityRefresh, setActivityRefresh] = useState(0);
   
@@ -56,8 +58,10 @@ export default function AmazonDashboard() {
       setEmployees(data.employees || 0);
       
       setTotalOrders(data.totalOrders || 0);
+      setPendingOrders(data.pendingOrders || 0);
       setRevenue(data.revenue || 0);
       setUnresolvedAlerts(data.unresolvedAlerts || 0);
+      setWeeklyData(data.weeklyOrders || []);
     } catch (err) {
       console.error("Failed to fetch metrics from MongoDB", err);
     }
@@ -143,6 +147,15 @@ export default function AmazonDashboard() {
                   </div>
 
                   <div className="bg-white border-t-4 border-t-[#232F3E] shadow-sm border-x border-b border-gray-200 rounded p-6 hover:shadow-md transition-shadow">
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Active Backlog</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <h3 className="text-3xl font-bold text-gray-900">{pendingOrders}</h3>
+                      <Package size={24} className="text-[#FF9900]" />
+                    </div>
+                    <p className="text-sm text-yellow-600 mt-3 flex items-center font-medium">Pending Orders</p>
+                  </div>
+
+                  <div className="bg-white border-t-4 border-t-[#232F3E] shadow-sm border-x border-b border-gray-200 rounded p-6 hover:shadow-md transition-shadow">
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Fulfilled Orders</p>
                     <div className="flex items-center justify-between mt-2">
                       <h3 className="text-3xl font-bold text-gray-900">{totalOrders}</h3>
@@ -163,8 +176,8 @@ export default function AmazonDashboard() {
                   <div className="bg-white border-t-4 border-t-[#232F3E] shadow-sm border-x border-b border-gray-200 rounded p-6 hover:shadow-md transition-shadow">
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Total Revenue</p>
                     <div className="flex items-center justify-between mt-2">
-                      <h3 className="text-3xl font-bold text-gray-900">${revenue.toFixed(2)}</h3>
-                      <DollarSign size={24} className="text-[#FF9900]" />
+                      <h3 className="text-3xl font-bold text-gray-900">{revenue.toFixed(2)}</h3>
+                      <IndianRupee size={24} className="text-[#FF9900]" />
                     </div>
                     <p className="text-sm text-green-600 mt-3 flex items-center font-medium"><TrendingUp size={14} className="mr-1"/> +24.1% vs last month</p>
                   </div>
@@ -176,14 +189,25 @@ export default function AmazonDashboard() {
                   <div className="bg-[#111827] border border-gray-800 rounded-2xl p-6 shadow-xl w-full">
                     <h2 className="text-lg font-bold text-white mb-6 flex items-center"><Activity className="mr-2 text-[#FF9900]" size={20}/> Infrastructure Load & Revenue Trends</h2>
                     <div className="h-64 flex items-end justify-between space-x-2 pt-4">
-                      {[40, 70, 45, 90, 65, 30, 85].map((height, i) => (
+                      {weeklyData.length > 0 ? weeklyData.map((dayData, i) => {
+                        const maxOrders = Math.max(...weeklyData.map(d => d.orders), 1);
+                        const height = (dayData.orders / maxOrders) * 100;
+                        return (
+                          <div key={i} title={`Orders: ${dayData.orders} | Revenue: ${dayData.revenue}`} className="w-full bg-gray-800 rounded-t relative group h-full flex items-end overflow-hidden cursor-pointer">
+                            <div style={{ height: `${Math.max(height, 5)}%` }} className="w-full bg-[#FF9900] rounded-t group-hover:bg-[#FFB84D] transition-colors duration-300"></div>
+                          </div>
+                        )
+                      }) : [40, 70, 45, 90, 65, 30, 85].map((height, i) => (
                         <div key={i} className="w-full bg-gray-800 rounded-t relative group h-full flex items-end overflow-hidden">
                           <div style={{ height: `${height}%` }} className="w-full bg-[#FF9900] rounded-t group-hover:bg-[#FFB84D] transition-colors duration-300"></div>
                         </div>
                       ))}
                     </div>
                     <div className="flex justify-between text-gray-500 text-xs mt-3 font-medium uppercase tracking-wider">
-                      <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      {weeklyData.length > 0 
+                        ? weeklyData.map((d, i) => <span key={i}>{d.day}</span>)
+                        : <><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></>
+                      }
                     </div>
                   </div>
 
@@ -209,14 +233,23 @@ export default function AmazonDashboard() {
               </>
             ) : (
               <div className="bg-white rounded-lg p-6 shadow-md border border-gray-200">
-                {activeTab === 'orders' && <OrdersPage />}
-                {activeTab === 'customers' && <CustomersPage />}
-                {activeTab === 'reports' && <ReportsPage />}
-                {activeTab === 'settings' && <SettingsPage />}
-                {activeTab === 'products' && <ProductsPage />}
-                {activeTab === 'pricing' && <PricingPage />}
-                {activeTab === 'payments' && <PaymentsPage />}
-                {activeTab === 'performance' && <PerformancePage />}
+                {activeTab === 'customers' ? (
+                  <CustomersPage />
+                ) : activeTab === 'reports' ? (
+                  <ReportsPage />
+                ) : activeTab === 'orders' ? (
+                  <OrdersPage isAdmin={true} company="amazon" />
+                ) : activeTab === 'pricing' ? (
+                  <PricingPage />
+                ) : activeTab === 'settings' ? (
+                  <SettingsPage />
+                ) : activeTab === 'products' ? (
+                  <ProductsPage />
+                ) : activeTab === 'payments' ? (
+                  <PaymentsPage />
+                ) : activeTab === 'performance' ? (
+                  <PerformancePage />
+                ) : null}
               </div>
             )}
 

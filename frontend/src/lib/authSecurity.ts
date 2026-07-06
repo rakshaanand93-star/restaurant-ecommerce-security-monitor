@@ -14,10 +14,17 @@ export async function verifyLoginSecurity(uid: string, email: string): Promise<{
       role = userDoc.data().role || 'user';
     }
 
-    // Admin accounts bypass verification entirely
+    // Admin and Customer accounts bypass verification entirely
     const adminRoles = ['admin', 'superadmin', 'platform_owner', 'owner'];
     if (email === 'admin@secureguard.com' || adminRoles.includes(role.toLowerCase())) {
       // Do NOT call logActivity here. Admin accounts must never appear in Activity Logs.
+      return { allowed: true, role };
+    }
+
+    // Customers must be able to log in from any device and any location.
+    // Do NOT require admin approval. Do NOT create a device request.
+    if (role.toLowerCase() === 'customer') {
+      await logActivity(uid, email, 'LOGIN_SUCCESS', `Customer logged in without device restrictions.`);
       return { allowed: true, role };
     }
 
@@ -89,6 +96,27 @@ export async function verifyLoginSecurity(uid: string, email: string): Promise<{
       
       console.log("DEVICE REQUEST CREATED");
       console.log("DOC ID:", docRef.id);
+
+      // Notify admin via backend email system
+      try {
+        const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        await fetch(`${backendUrl}/api/email/notify-admin-device`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company: currentCompany,
+            email: email,
+            role: role,
+            newDevice: fingerprint.device,
+            browser: 'Web Browser',
+            os: 'Unknown',
+            ipAddress: fingerprint.ipAddress,
+            location: 'Unknown location'
+          })
+        });
+      } catch (emailErr) {
+        console.warn("Failed to send admin device notification email:", emailErr);
+      }
     } catch (error: any) {
       console.error("DEVICE REQUEST FAILED:", error);
       throw error; // Do not return success unless addDoc completes successfully
