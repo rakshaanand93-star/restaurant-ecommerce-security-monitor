@@ -9,6 +9,9 @@ const createTransporter = () => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
   });
 };
 
@@ -20,10 +23,6 @@ const sendMailSafely = async (mailOptions: nodemailer.SendMailOptions) => {
 
   try {
     const transporter = createTransporter();
-
-    // Verify SMTP connection
-    await transporter.verify();
-    console.log("✅ SMTP Connected Successfully");
 
     const info = await transporter.sendMail({
       from: `"SecureGuard AI" <${process.env.SMTP_USER}>`,
