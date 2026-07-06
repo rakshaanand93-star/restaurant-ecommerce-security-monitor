@@ -17,13 +17,19 @@ const sendMailSafely = async (mailOptions: nodemailer.SendMailOptions) => {
     console.warn(`[Mailer] SMTP credentials not configured. Skipping email to ${mailOptions.to}`);
     return false;
   }
-  
+
   try {
     const transporter = createTransporter();
+
+    // Verify SMTP connection
+    await transporter.verify();
+    console.log("✅ SMTP Connected Successfully");
+
     const info = await transporter.sendMail({
       from: `"SecureGuard AI" <${process.env.SMTP_USER}>`,
       ...mailOptions
     });
+
     console.log(`[Mailer] Successfully sent email to ${mailOptions.to}. Message ID: ${info.messageId}`);
     return true;
   } catch (error) {
@@ -31,7 +37,6 @@ const sendMailSafely = async (mailOptions: nodemailer.SendMailOptions) => {
     return false;
   }
 };
-
 export const sendEmployeeNewOrderEmail = async (order: any) => {
   const mailOptions = {
     to: 'secureguard.notifications@gmail.com',
@@ -81,7 +86,7 @@ export const sendCustomerOrderAcceptedEmail = async (order: any) => {
     console.warn('[Mailer] Missing customer email for accepted order:', order.orderId);
     return false;
   }
-  
+
   const mailOptions = {
     to: order.customerEmail,
     subject: `Your Order Has Been Accepted`,
