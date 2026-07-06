@@ -35,8 +35,9 @@ export function NotificationCenter() {
       try {
         const activeCompany = company.toLowerCase();
         console.log(`Current company: ${activeCompany}`);
-        console.log(`API URL being called: http://localhost:4000/api/notifications?company=${activeCompany}`);
-        const res = await fetch(`http://localhost:4000/api/notifications?company=${activeCompany}`);
+        const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        console.log(`API URL being called: ${backendUrl}/api/notifications?company=${activeCompany}`);
+        const res = await fetch(`${backendUrl}/api/notifications?company=${activeCompany}`);
         const data = await res.json();
         console.log(`Notifications returned for ${company}:`, data);
         const fetched = data.map((n: any) => ({
@@ -126,7 +127,8 @@ export function NotificationCenter() {
     }
 
     try {
-      await fetch(`http://localhost:4000/api/notifications/${notif.id}/read`, { method: 'PATCH' });
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/notifications/${notif.id}/read`, { method: 'PATCH' });
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
     } catch (e) {
       console.error(e);
@@ -140,7 +142,8 @@ export function NotificationCenter() {
     }
     
     try {
-      await fetch(`http://localhost:4000/api/notifications/${notif.id}/read`, { method: 'PATCH' });
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/notifications/${notif.id}/read`, { method: 'PATCH' });
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
     } catch (e) {
       console.error(e);
@@ -149,7 +152,8 @@ export function NotificationCenter() {
 
   const markAsRead = async (id: string) => {
     try {
-      await fetch(`http://localhost:4000/api/notifications/${id}/read`, { method: 'PATCH' });
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/notifications/${id}/read`, { method: 'PATCH' });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     } catch (e) {
       console.error(e);
@@ -159,7 +163,8 @@ export function NotificationCenter() {
   const markAllAsRead = async () => {
     try {
       const activeCompany = company.toLowerCase();
-      await fetch('http://localhost:4000/api/notifications/read-all', {
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/notifications/read-all`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company: activeCompany })
@@ -173,7 +178,8 @@ export function NotificationCenter() {
   const deleteNotification = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await fetch(`http://localhost:4000/api/notifications/${id}`, { method: 'DELETE' });
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/notifications/${id}`, { method: 'DELETE' });
       setNotifications(prev => prev.filter(n => n.id !== id));
     } catch (e) {
       console.error(e);

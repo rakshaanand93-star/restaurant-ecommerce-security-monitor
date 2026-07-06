@@ -1,6 +1,7 @@
 export async function syncToMongo(collectionName: string, data: any): Promise<boolean> {
   try {
-    const response = await fetch('http://localhost:4000/api/mongodb/sync', {
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${backendUrl}/api/mongodb/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

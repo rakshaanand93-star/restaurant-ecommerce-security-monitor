@@ -114,7 +114,8 @@ export default function DeviceRequestsPanel() {
       });
 
       console.log("Notification written to Firebase");
-      const res = await fetch('http://localhost:4000/api/notifications', {
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const res = await fetch(`${backendUrl}/api/notifications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,7 +161,8 @@ export default function DeviceRequestsPanel() {
       });
 
       console.log("Notification written to Firebase");
-      const res = await fetch('http://localhost:4000/api/notifications', {
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const res = await fetch(`${backendUrl}/api/notifications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,7 +184,8 @@ export default function DeviceRequestsPanel() {
     try {
       await deleteDoc(doc(db, 'device_requests', req.id));
       try {
-        await fetch(`http://localhost:4000/api/device-requests/${req.id}`, { method: 'DELETE' });
+        const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        await fetch(`${backendUrl}/api/device-requests/${req.id}`, { method: 'DELETE' });
       } catch (e) {
         // Ignored in case MongoDB sync endpoint doesn't exist
       }

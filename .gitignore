@@ -4,3 +4,4 @@ build/
 .env
 .DS_Store
 backend/firebase-adminsdk.json
+backend/firebase-adminsdk.json.json

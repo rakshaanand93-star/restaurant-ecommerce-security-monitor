@@ -70,7 +70,8 @@ export async function createAdminNotification(title: string, message: string, ty
       const activeCompany = localStorage.getItem('company') || 'Zomato';
       const companyKey = activeCompany.toLowerCase();
       
-      await fetch('http://localhost:4000/api/notifications', {
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/notifications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
