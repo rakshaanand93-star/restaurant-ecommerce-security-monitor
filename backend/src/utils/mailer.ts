@@ -1,4 +1,9 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
+
+// Force Node.js to prioritize IPv4 over IPv6 when resolving addresses
+// This prevents ENETUNREACH errors in environments without IPv6 routing
+dns.setDefaultResultOrder('ipv4first');
 
 const createTransporter = () => {
   return nodemailer.createTransport({
