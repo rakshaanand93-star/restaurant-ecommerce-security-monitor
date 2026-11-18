@@ -28,6 +28,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
+        const lowerEmail = user.email?.toLowerCase() || '';
+        const isAdminEmail = lowerEmail === 'admin@secureguard.com';
+        const isRestaurantEmail = lowerEmail.includes('restaurant') || lowerEmail.includes('resturant');
+        const isDeliveryEmail = lowerEmail.includes('delivery') || lowerEmail.includes('rider') || lowerEmail.includes('driver');
+        const isWarehouseEmail = lowerEmail.includes('warehouse');
+        const isCustomerEmail = lowerEmail.includes('customer');
+
+        const inferredRole = isAdminEmail ? 'admin' 
+          : isRestaurantEmail ? 'restaurant'
+          : isDeliveryEmail ? 'employee'
+          : isWarehouseEmail ? 'warehouse'
+          : isCustomerEmail ? 'customer'
+          : 'user';
+
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
@@ -39,13 +53,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setLoading(false);
               return;
             }
-            setRole(data.role || 'user');
+            const docRole = data.role?.toLowerCase();
+            // If doc has 'user' but email specifically indicates restaurant or admin, prefer the specific role
+            if (inferredRole !== 'user' && (!docRole || docRole === 'user')) {
+              setRole(inferredRole);
+            } else {
+              setRole(docRole || inferredRole);
+            }
           } else {
-            setRole('user');
+            setRole(inferredRole);
           }
         } catch (error) {
           console.error("Error fetching user role:", error);
-          setRole('user');
+          setRole(inferredRole);
         }
       } else {
         setRole(null);

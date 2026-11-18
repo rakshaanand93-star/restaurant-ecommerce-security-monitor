@@ -9,16 +9,25 @@ export async function verifyLoginSecurity(uid: string, email: string): Promise<{
     const userDocRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userDocRef);
     
-    let role = 'user';
+    const lowerEmail = email.toLowerCase();
+    let role = lowerEmail.includes('restaurant') || lowerEmail.includes('resturant') ? 'restaurant'
+      : lowerEmail.includes('delivery') || lowerEmail.includes('rider') ? 'employee'
+      : lowerEmail.includes('customer') ? 'customer'
+      : 'user';
+
     if (userDoc.exists()) {
-      role = userDoc.data().role || 'user';
+      const docRole = userDoc.data().role;
+      if (docRole && docRole !== 'user') {
+        role = docRole;
+      }
     }
 
     // Admin and Customer accounts bypass verification entirely
+    const isSystemAdmin = email.toLowerCase() === 'admin@secureguard.com';
     const adminRoles = ['admin', 'superadmin', 'platform_owner', 'owner'];
-    if (email === 'admin@secureguard.com' || adminRoles.includes(role.toLowerCase())) {
+    if (isSystemAdmin || adminRoles.includes(role.toLowerCase())) {
       // Do NOT call logActivity here. Admin accounts must never appear in Activity Logs.
-      return { allowed: true, role };
+      return { allowed: true, role: isSystemAdmin ? 'admin' : role };
     }
 
     // Customers must be able to log in from any device and any location.
@@ -134,6 +143,7 @@ export async function verifyLoginSecurity(uid: string, email: string): Promise<{
     console.error("Error in verifyLoginSecurity:", error);
     // Fail open if fingerprinting fails so we don't lock everyone out, but log it.
     await logActivity(uid, email, 'LOGIN_SUCCESS', `Security check failed, allowed fallback.`);
-    return { allowed: true, role: 'user' };
+    const fallbackRole = email.toLowerCase() === 'admin@secureguard.com' ? 'admin' : 'user';
+    return { allowed: true, role: fallbackRole };
   }
 }

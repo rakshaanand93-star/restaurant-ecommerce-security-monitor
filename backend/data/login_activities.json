@@ -1,0 +1,69 @@
+[
+  {
+    "_id": "6afdece5cad3797df845efed",
+    "userId": "unknown",
+    "userEmail": "raksha@gmail.com",
+    "action": "LOGIN_SUCCESS",
+    "details": "Employee terminal session active",
+    "ipAddress": "127.0.0.1",
+    "status": "LOGIN_SUCCESS",
+    "company": "zomato",
+    "role": "employee",
+    "createdAt": "2026-11-18T18:22:29.686Z"
+  },
+  {
+    "_id": "6670b1b2c3d4e5f600000001",
+    "userId": "UaXhWk5QNxTRFt9mcs3OuaVn4F23",
+    "userEmail": "admin@secureguard.com",
+    "action": "LOGIN_SUCCESS",
+    "details": "Admin logged into AdminHQ dashboard",
+    "ipAddress": "127.0.0.1",
+    "status": "LOGIN_SUCCESS",
+    "company": "zomato",
+    "createdAt": "2026-11-18T18:15:07.342Z"
+  },
+  {
+    "_id": "6670b1b2c3d4e5f600000002",
+    "userId": "kzneP1VWIxeO92fdDT1W0ha7bzn2",
+    "userEmail": "resturant1@gmail.com",
+    "action": "LOGIN_SUCCESS",
+    "details": "Restaurant 1 dashboard session active",
+    "ipAddress": "127.0.0.1",
+    "status": "LOGIN_SUCCESS",
+    "company": "zomato",
+    "createdAt": "2026-11-18T18:05:07.343Z"
+  },
+  {
+    "_id": "6670b1b2c3d4e5f600000003",
+    "userId": "QbaKJBAMtPP5gJUr9LObsPc2YdE3",
+    "userEmail": "customer@gmail.com",
+    "action": "LOGIN_SUCCESS",
+    "details": "Customer mobile app session",
+    "ipAddress": "127.0.0.1",
+    "status": "LOGIN_SUCCESS",
+    "company": "zomato",
+    "createdAt": "2026-11-18T17:50:07.343Z"
+  },
+  {
+    "_id": "6670b1b2c3d4e5f600000004",
+    "userId": "unknown",
+    "userEmail": "attacker@unknown.net",
+    "action": "LOGIN_BLOCKED",
+    "details": "Suspicious unrecognized IP address blocked by policy",
+    "ipAddress": "198.51.100.23",
+    "status": "LOGIN_BLOCKED",
+    "company": "zomato",
+    "createdAt": "2026-11-18T17:20:07.343Z"
+  },
+  {
+    "_id": "6670b1b2c3d4e5f600000005",
+    "userId": "Q8YrOT6D76awK4NvSz7HgGM45Tk1",
+    "userEmail": "warehouse1@gmail.com",
+    "action": "LOGIN_SUCCESS",
+    "details": "Fulfillment center terminal authorized",
+    "ipAddress": "127.0.0.1",
+    "status": "LOGIN_SUCCESS",
+    "company": "amazon",
+    "createdAt": "2026-11-18T18:00:07.343Z"
+  }
+]

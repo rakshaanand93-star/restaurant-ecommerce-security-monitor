@@ -41,9 +41,8 @@ const initializeApp = async () => {
     await seedDatabase();
 
     console.log('✓ All services initialized successfully\n');
-  } catch (error) {
-    console.error('✗ Failed to initialize services:', error);
-    process.exit(1);
+  } catch (error: any) {
+    console.warn('✗ MongoDB / Service initialization warning (server will keep running):', error.message || error);
   }
 };
 
@@ -127,14 +126,17 @@ app.use((err: any, _req: express.Request, res: express.Response) => {
  * Start server
  */
 const startServer = async () => {
+  const server = app.listen(port, () => {
+    console.log(`\n✓ SecureGuard AI backend listening on http://localhost:${port}`);
+    console.log(`✓ Frontend CORS origin: ${process.env.CORS_ORIGIN || 'http://localhost:4173'}`);
+    console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}\n`);
+  });
+
   try {
     await initializeApp();
-
-    const server = app.listen(port, () => {
-      console.log(`\n✓ SecureGuard AI backend listening on http://localhost:${port}`);
-      console.log(`✓ Frontend CORS origin: ${process.env.CORS_ORIGIN || 'http://localhost:4173'}`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}\n`);
-    });
+  } catch (error) {
+    console.error('Service initialization error:', error);
+  }
 
     /**
      * Graceful shutdown
@@ -160,12 +162,8 @@ const startServer = async () => {
       }, 10000);
     };
 
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 };
 
 startServer();

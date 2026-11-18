@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Disable buffering so operations fail immediately or fallback instead of freezing for 10 seconds when DB is reconnecting
+mongoose.set('bufferCommands', false);
+
 /**
  * MongoDB Connection Configuration
  * Handles connection to MongoDB Atlas
@@ -26,12 +29,10 @@ const MONGO_OPTIONS: MongoOptions = {
 export const initializeMongoose = async (): Promise<void> => {
   try {
     const mongoUri = process.env.MONGODB_URI;
-    console.log("Mongo URI:", mongoUri);
 
     if (!mongoUri) {
-      throw new Error(
-        'MONGODB_URI environment variable is not set. Please configure MongoDB Atlas and add the connection string to .env'
-      );
+      console.warn('⚠️ MONGODB_URI is not set. Resilient disk persistence layer active.');
+      return;
     }
 
     await mongoose.connect(mongoUri, MONGO_OPTIONS);
@@ -40,9 +41,9 @@ export const initializeMongoose = async (): Promise<void> => {
     console.log(`Database Name: ${mongoose.connection.db?.databaseName || 'connected'}`);
     console.log(`Connection Status: Connected`);
     console.log(`Host: ${mongoose.connection.host}\n`);
-  } catch (error) {
-    console.error('✗ Failed to connect to MongoDB:', error);
-    throw error;
+  } catch (error: any) {
+    console.warn('✗ Failed to connect to MongoDB Atlas (resilient disk persistence layer active):', error.message || error);
+    // Do not throw so the server stays online and serves requests immediately
   }
 };
 
@@ -51,11 +52,12 @@ export const initializeMongoose = async (): Promise<void> => {
  */
 export const closeMongoose = async (): Promise<void> => {
   try {
-    await mongoose.disconnect();
-    console.log('✓ MongoDB connection closed');
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+      console.log('✓ MongoDB connection closed');
+    }
   } catch (error) {
     console.error('✗ Error closing MongoDB connection:', error);
-    throw error;
   }
 };
 
@@ -66,8 +68,8 @@ export const getMongooseStatus = () => {
   return {
     connected: mongoose.connection.readyState === 1,
     readyState: mongoose.connection.readyState,
-    host: mongoose.connection.host,
-    database: mongoose.connection.db?.databaseName || 'unknown',
+    host: mongoose.connection.host || 'local-fallback',
+    database: mongoose.connection.db?.databaseName || 'secureguard_ai',
   };
 };
 
@@ -77,13 +79,6 @@ export const getMongooseStatus = () => {
 mongoose.connection.on('connected', () => {
   console.log('⚡ Mongoose connected to MongoDB');
 });
-
 mongoose.connection.on('error', (err) => {
-  console.error('✗ Mongoose connection error:', err);
+  console.warn('⚡ Mongoose connection error (handled):', err.message);
 });
-
-mongoose.connection.on('disconnected', () => {
-  console.warn('⚠ Mongoose disconnected from MongoDB');
-});
-
-export default mongoose;

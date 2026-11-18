@@ -1,15 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { ZomatoCart } from '../models/ZomatoCart';
-import { Order } from '../models/Order';
 import { Notification } from '../models/Notification';
-import { sendEmployeeNewOrderEmail } from '../utils/mailer';
-import { v4 as uuidv4 } from 'uuid';
 import { getFirebaseFirestore } from '../config/firebase';
+import { saveOrder, isMongoConnected, getLocalCart, saveLocalCart, clearLocalCart } from '../services/orderStorage';
 
 const router = Router();
 
 // Middleware to extract user ID safely
-const getUserId = (req: Request) => req.user?.uid || req.query.userId || req.body.userId;
+const getUserId = (req: Request): string => {
+  return (req as any).user?.uid || (req.query.userId as string) || req.body.userId || 'guest_user';
+};
 
 // GET /api/cart
 router.get('/', async (req: Request, res: Response) => {
@@ -17,8 +17,17 @@ router.get('/', async (req: Request, res: Response) => {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    const cartItems = await ZomatoCart.find({ userId }).sort({ createdAt: -1 });
-    res.json(cartItems);
+    if (isMongoConnected()) {
+      try {
+        const cartItems = await ZomatoCart.find({ userId }).sort({ createdAt: -1 });
+        return res.json(cartItems);
+      } catch (e) {
+        // Fallback to local
+      }
+    }
+
+    const items = getLocalCart(userId, 'zomato');
+    res.json(items);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch cart' });
   }
@@ -31,31 +40,66 @@ router.post('/', async (req: Request, res: Response) => {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const { restaurantId, menuItemId, restaurantName, menuName, image, quantity, price } = req.body;
-    
-    // Check if item already exists
-    let item = await ZomatoCart.findOne({ userId, menuItemId });
-    if (item) {
-      item.quantity += (quantity || 1);
-      item.subtotal = item.quantity * item.price;
-      await item.save();
-    } else {
-      item = new ZomatoCart({
-        userId,
-        restaurantId,
-        menuItemId,
-        restaurantName,
-        menuName,
-        image,
-        quantity: quantity || 1,
-        price,
-        subtotal: (quantity || 1) * price
-      });
-      await item.save();
+    const qty = Number(quantity) || 1;
+    const unitPrice = Number(price) || 0;
+
+    let item: any = null;
+
+    if (isMongoConnected()) {
+      try {
+        item = await ZomatoCart.findOne({ userId, menuItemId });
+        if (item) {
+          item.quantity += qty;
+          item.subtotal = item.quantity * item.price;
+          await item.save();
+        } else {
+          item = new ZomatoCart({
+            userId,
+            restaurantId: restaurantId || 'REST-1001',
+            menuItemId: menuItemId || `m-${Date.now()}`,
+            restaurantName: restaurantName || 'Restaurant',
+            menuName: menuName || 'Food Item',
+            image: image || '',
+            price: unitPrice,
+            quantity: qty,
+            subtotal: unitPrice * qty
+          });
+          await item.save();
+        }
+      } catch (mongoErr) {
+        console.warn('MongoDB cart save fallback:', mongoErr);
+      }
     }
+
+    // Always keep local cart in sync
+    const items = getLocalCart(userId, 'zomato');
+    const existingIdx = items.findIndex((i: any) => i.menuItemId === menuItemId);
+    if (existingIdx >= 0) {
+      items[existingIdx].quantity += qty;
+      items[existingIdx].subtotal = items[existingIdx].quantity * items[existingIdx].price;
+      item = items[existingIdx];
+    } else {
+      const newItem = {
+        _id: `c-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        userId,
+        restaurantId: restaurantId || 'REST-1001',
+        menuItemId: menuItemId || `m-${Date.now()}`,
+        restaurantName: restaurantName || 'Restaurant',
+        menuName: menuName || 'Food Item',
+        image: image || '',
+        price: unitPrice,
+        quantity: qty,
+        subtotal: unitPrice * qty
+      };
+      items.push(newItem);
+      item = newItem;
+    }
+    saveLocalCart(userId, items, 'zomato');
 
     res.json(item);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to add to cart' });
+    console.error('Error adding to cart:', error);
+    res.status(500).json({ error: 'Failed to add item to cart' });
   }
 });
 
@@ -63,23 +107,40 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
     const { quantity } = req.body;
-    const item = await ZomatoCart.findOne({ _id: req.params.id, userId });
-    
-    if (!item) return res.status(404).json({ error: 'Cart item not found' });
+    const targetId = req.params.id;
+    const qty = Number(quantity);
 
-    if (quantity <= 0) {
-      await ZomatoCart.deleteOne({ _id: req.params.id });
-      return res.json({ success: true, removed: true });
+    if (isNaN(qty) || qty < 1) {
+      return res.status(400).json({ error: 'Invalid quantity' });
     }
 
-    item.quantity = quantity;
-    item.subtotal = item.quantity * item.price;
-    await item.save();
+    let updatedItem: any = null;
 
-    res.json(item);
+    if (isMongoConnected()) {
+      try {
+        let item = await ZomatoCart.findOne({ _id: targetId, userId });
+        if (!item) item = await ZomatoCart.findOne({ menuItemId: targetId, userId });
+        if (item) {
+          item.quantity = qty;
+          item.subtotal = qty * item.price;
+          await item.save();
+          updatedItem = item;
+        }
+      } catch (e) {}
+    }
+
+    const items = getLocalCart(userId, 'zomato');
+    const idx = items.findIndex((i: any) => i._id === targetId || i.menuItemId === targetId);
+    if (idx >= 0) {
+      items[idx].quantity = qty;
+      items[idx].subtotal = qty * items[idx].price;
+      updatedItem = items[idx];
+      saveLocalCart(userId, items, 'zomato');
+    }
+
+    if (!updatedItem) return res.status(404).json({ error: 'Item not found' });
+    res.json(updatedItem);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update cart item' });
   }
@@ -89,9 +150,19 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const targetId = req.params.id;
 
-    await ZomatoCart.deleteOne({ _id: req.params.id, userId });
+    if (isMongoConnected()) {
+      try {
+        await ZomatoCart.deleteOne({ _id: targetId, userId });
+        await ZomatoCart.deleteOne({ menuItemId: targetId, userId });
+      } catch (e) {}
+    }
+
+    const items = getLocalCart(userId, 'zomato');
+    const filtered = items.filter((i: any) => i._id !== targetId && i.menuItemId !== targetId);
+    saveLocalCart(userId, filtered, 'zomato');
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to remove item' });
@@ -102,72 +173,124 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/checkout', async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { email, shippingAddress, items: bodyItems } = req.body;
 
-    const { email } = req.body;
-    const cartItems = await ZomatoCart.find({ userId });
-    if (cartItems.length === 0) return res.status(400).json({ error: 'Cart is empty' });
+    // Use items passed from request body if available, or fetch from cart
+    let checkoutItems: any[] = [];
+    if (Array.isArray(bodyItems) && bodyItems.length > 0) {
+      checkoutItems = bodyItems;
+    } else {
+      if (isMongoConnected()) {
+        try {
+          const dbItems = await ZomatoCart.find({ userId });
+          if (dbItems && dbItems.length > 0) {
+            checkoutItems = dbItems.map(i => ({
+              productId: i.menuItemId,
+              restaurantId: i.restaurantId,
+              name: i.menuName,
+              price: i.price,
+              quantity: i.quantity,
+              image: i.image
+            }));
+          }
+        } catch (e) {}
+      }
+      if (checkoutItems.length === 0) {
+        const local = getLocalCart(userId, 'zomato');
+        checkoutItems = local.map((i: any) => ({
+          productId: i.menuItemId,
+          restaurantId: i.restaurantId,
+          name: i.menuName,
+          price: i.price,
+          quantity: i.quantity,
+          image: i.image
+        }));
+      }
+    }
 
-    const totalAmount = cartItems.reduce((acc, item) => acc + item.subtotal, 0);
+    if (checkoutItems.length === 0) {
+      return res.status(400).json({ error: 'Cart is empty. Please add items before placing order.' });
+    }
 
-    const newOrder = new Order({
-      orderId: `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+    const totalAmount = checkoutItems.reduce((acc, item) => {
+      const price = Number(item.price) || 0;
+      const qty = Number(item.quantity) || 1;
+      return acc + (price * qty);
+    }, 0);
+
+    const firstItem = checkoutItems[0] || {};
+    const restaurantId = firstItem.restaurantId || 'REST-1001';
+    const restaurantName = firstItem.restaurantName || (restaurantId === 'REST-1002' ? 'Restaurant 2' : restaurantId === 'REST-1003' ? 'Restaurant 3' : 'Restaurant 1');
+
+    const orderId = `ORD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+
+    const newOrder = await saveOrder({
+      orderId,
       customerId: userId,
       customerEmail: email || 'customer@zomato.com',
       company: 'zomato',
-      items: cartItems.map(i => ({
-        productId: i.menuItemId,
-        restaurantId: i.restaurantId,
-        name: i.menuName,
-        price: i.price,
-        quantity: i.quantity,
-        image: i.image
+      items: checkoutItems.map(i => ({
+        productId: i.productId || i._id || i.menuItemId,
+        restaurantId: i.restaurantId || restaurantId,
+        restaurantName: i.restaurantName || restaurantName,
+        name: i.name || i.menuName,
+        price: Number(i.price) || 0,
+        quantity: Number(i.quantity) || 1,
+        image: i.image || ''
       })),
       amount: totalAmount,
       status: 'pending',
-      shippingAddress: { street: '123 Zomato St' },
-      employeeId: cartItems[0]?.restaurantId || 'unknown'
+      shippingAddress: shippingAddress || { street: '12 Indiranagar 100ft Road, Bengaluru' },
+      employeeId: restaurantId,
+      restaurantId,
+      restaurantName
     });
 
-    await newOrder.save();
+    // Clear cart both in Mongo and local store
+    if (isMongoConnected()) {
+      ZomatoCart.deleteMany({ userId }).catch(console.warn);
+    }
+    clearLocalCart(userId, 'zomato');
 
-    // Sync to Firestore for real-time customer updates
+    // Create notifications for Restaurant Team
+    try {
+      if (isMongoConnected()) {
+        await Notification.create({
+          title: 'New Order Placed',
+          message: `New Zomato Order #${orderId} from ${email || 'Customer'} for ₹${totalAmount}`,
+          type: 'order_alert',
+          company: 'zomato',
+          relatedOrderId: orderId
+        }).catch(console.warn);
+      }
+    } catch (e) {}
+
+    // Sync to Firestore if available
     try {
       const db = getFirebaseFirestore();
-      await db.collection('orders').doc(newOrder.orderId).set({
-        orderId: newOrder.orderId,
-        status: newOrder.status,
+      await db.collection('orders').doc(orderId).set({
+        orderId,
+        customerId: userId,
+        customerEmail: newOrder.customerEmail,
+        company: 'zomato',
+        restaurantId,
+        restaurantName,
+        items: newOrder.items,
+        amount: totalAmount,
+        status: 'pending',
+        shippingAddress: newOrder.shippingAddress,
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
     } catch (firebaseErr: any) {
-      console.warn('Failed to create order in Firebase:', firebaseErr.message);
+      // Non-fatal
     }
 
-    // Clear cart
-    await ZomatoCart.deleteMany({ userId });
-
-    // Send notifications to Managers and Employees
-    await Notification.create({
-      title: 'New Order',
-      message: `New Zomato Order ${newOrder.orderId} for ₹${totalAmount}`,
-      type: 'order_alert',
-      company: 'zomato'
-    });
-
-    await Notification.create({
-      title: 'Order Preparation',
-      message: `New Zomato Order ${newOrder.orderId} requires preparation.`,
-      type: 'order_alert',
-      company: 'zomato'
-    });
-
-    // Send email to Employee (secureguard.notifications@gmail.com)
-    // Fire and forget (don't block response)
-    sendEmployeeNewOrderEmail(newOrder).catch(console.error);
-
+    console.log(`✓ Zomato Order #${orderId} created successfully for ₹${totalAmount}`);
     res.json(newOrder);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to place order' });
+  } catch (error: any) {
+    console.error('Error placing order:', error);
+    res.status(500).json({ error: error.message || 'Failed to place order' });
   }
 });
 

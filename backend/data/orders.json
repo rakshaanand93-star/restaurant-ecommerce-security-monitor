@@ -1,0 +1,126 @@
+[
+  {
+    "orderId": "ORD-ORTSN4A",
+    "amount": 260,
+    "status": "out_for_delivery",
+    "customerEmail": "customer@gmail.com",
+    "company": "zomato",
+    "customerId": "QbaKJBAMtPP5gJUr9LObsPc2YdE3",
+    "items": [
+      {
+        "productId": "c-1795024960226-j23i",
+        "restaurantId": "REST-1001",
+        "restaurantName": "Restaurant 1",
+        "name": "Masala Dosa",
+        "price": 120,
+        "quantity": 1,
+        "image": "/menu/masala-dosa.png"
+      },
+      {
+        "productId": "c-1795024961719-l5po",
+        "restaurantId": "REST-1001",
+        "restaurantName": "Restaurant 1",
+        "name": "Butter Naan",
+        "price": 50,
+        "quantity": 1,
+        "image": "/menu/butter-naan.png"
+      },
+      {
+        "productId": "c-1795024965025-24qg",
+        "restaurantId": "REST-1001",
+        "restaurantName": "Restaurant 1",
+        "name": "Gulab Jamun",
+        "price": 90,
+        "quantity": 1,
+        "image": "/menu/gulab-jamun.png"
+      }
+    ],
+    "paymentMethod": "COD",
+    "shippingAddress": {
+      "street": "12 Indiranagar 100ft Road, Bengaluru"
+    },
+    "employeeId": "REST-1001",
+    "employeeName": "",
+    "restaurantId": "REST-1001",
+    "restaurantName": "Restaurant 1",
+    "warehouseId": "Warehouse 1",
+    "createdAt": "2026-11-18T18:02:48.923Z",
+    "updatedAt": "2026-11-18T18:13:54.163Z",
+    "acceptedAt": "2026-11-18T18:13:42.408Z",
+    "preparingAt": "2026-11-18T18:13:47.411Z",
+    "preparedAt": "2026-11-18T18:13:51.129Z",
+    "shippedAt": "2026-11-18T18:13:54.163Z"
+  },
+  {
+    "orderId": "AMZ-8AZV99Q",
+    "amount": 79999,
+    "status": "pending",
+    "customerEmail": "customer@amazon.com",
+    "company": "amazon",
+    "customerId": "UaXhWk5QNxTRFt9mcs3OuaVn4F23",
+    "items": [
+      {
+        "price": 79999,
+        "warehouse": "Warehouse 1",
+        "quantity": 1,
+        "productId": "w1-1",
+        "name": "Apple iPhone 16 (128GB)"
+      }
+    ],
+    "paymentMethod": "COD",
+    "shippingAddress": {
+      "street": "42 Tech Boulevard, Whitefield, Bengaluru"
+    },
+    "employeeId": "",
+    "employeeName": "",
+    "restaurantId": "REST-1001",
+    "restaurantName": "Restaurant 1",
+    "warehouseId": "Warehouse 1",
+    "createdAt": "2026-11-18T17:58:47.681Z",
+    "updatedAt": "2026-11-18T17:58:47.681Z"
+  },
+  {
+    "orderId": "ORD-5SCXTO9",
+    "amount": 170,
+    "status": "delivered",
+    "customerEmail": "customer@zomato.com",
+    "company": "zomato",
+    "customerId": "UaXhWk5QNxTRFt9mcs3OuaVn4F23",
+    "items": [
+      {
+        "restaurantId": "REST-1001",
+        "restaurantName": "Restaurant 1",
+        "name": "Masala Dosa",
+        "price": 120,
+        "quantity": 1,
+        "image": ""
+      },
+      {
+        "restaurantId": "REST-1001",
+        "restaurantName": "Restaurant 1",
+        "name": "Butter Naan",
+        "price": 50,
+        "quantity": 1,
+        "image": ""
+      }
+    ],
+    "paymentMethod": "COD",
+    "shippingAddress": {
+      "street": "Indiranagar 100ft Rd"
+    },
+    "employeeId": "REST-1001",
+    "employeeName": "",
+    "restaurantId": "REST-1001",
+    "restaurantName": "Restaurant 1",
+    "warehouseId": "Warehouse 1",
+    "createdAt": "2026-11-18T17:56:58.448Z",
+    "updatedAt": "2026-11-18T17:58:38.790Z",
+    "acceptedAt": "2026-11-18T17:58:19.600Z",
+    "assignedDeliveryPersonId": "DELIVERY-01",
+    "assignedDeliveryPersonName": "Ramesh Rider",
+    "preparingAt": "2026-11-18T17:58:38.393Z",
+    "preparedAt": "2026-11-18T17:58:38.572Z",
+    "shippedAt": "2026-11-18T17:58:38.684Z",
+    "deliveredAt": "2026-11-18T17:58:38.790Z"
+  }
+]

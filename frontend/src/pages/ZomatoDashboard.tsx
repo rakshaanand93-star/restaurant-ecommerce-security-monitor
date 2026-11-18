@@ -80,6 +80,14 @@ export default function ZomatoDashboard() {
 
   const fetchRestaurantProfile = () => {
     if (currentUser?.email && !isAdmin) {
+      const email = currentUser.email.toLowerCase();
+      if (email.includes('restaurant1') || email.includes('resturant1')) {
+        setRestaurantName('Restaurant 1');
+      } else if (email.includes('restaurant2') || email.includes('resturant2')) {
+        setRestaurantName('Restaurant 2');
+      } else if (email.includes('restaurant3') || email.includes('resturant3')) {
+        setRestaurantName('Restaurant 3');
+      }
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
       fetch(`${backendUrl}/api/users/by-email/${encodeURIComponent(currentUser.email)}`)
         .then(res => res.json())
@@ -377,7 +385,7 @@ export default function ZomatoDashboard() {
             </div>
           ) : (
             <div className="max-w-[1600px] mx-auto">
-              <OrdersPage isRestaurantView={true} restaurantId={currentUser?.uid} />
+              <OrdersPage isRestaurantView={true} restaurantId={currentUser?.uid} userEmail={currentUser?.email || undefined} company="zomato" />
             </div>
           )}
         </main>

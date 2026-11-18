@@ -53,11 +53,14 @@ const CompanyLoginPage: React.FC = () => {
 
       // Fetch MongoDB user to verify company
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const mongoRes = await fetch(`${backendUrl}/api/users/by-email/${encodeURIComponent(email)}`);
-      
       let mongoUser = null;
-      if (mongoRes.ok) {
-        mongoUser = await mongoRes.json();
+      try {
+        const mongoRes = await fetch(`${backendUrl}/api/users/by-email/${encodeURIComponent(email)}`);
+        if (mongoRes.ok) {
+          mongoUser = await mongoRes.json();
+        }
+      } catch (backendErr) {
+        console.warn("Backend unavailable to verify company in MongoDB (will continue):", backendErr);
       }
 
       console.log("MongoDB user document found for " + email + ":", mongoUser);
@@ -68,7 +71,7 @@ const CompanyLoginPage: React.FC = () => {
       console.log("Warehouse ID:", mongoUser?.warehouseId || mongoUser?._id);
 
       // Ensure they don't cross companies (unless they are admin@secureguard.com which might be global)
-      if (mongoCompany !== 'unknown' && email !== 'admin@secureguard.com') {
+      if (mongoCompany !== 'unknown' && email.toLowerCase() !== 'admin@secureguard.com') {
         if (mongoCompany !== company) {
           console.log("Validation failure: Company mismatch. Expected", company, "but got", mongoCompany);
           await auth.signOut();
@@ -90,18 +93,23 @@ const CompanyLoginPage: React.FC = () => {
       localStorage.setItem('user', JSON.stringify({ email: user.email, uid: user.uid }));
 
       // Fetch role from Firestore, or create document if missing
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        const lowerEmail = email.toLowerCase();
-        const role = lowerEmail.includes('admin') ? 'admin' : (mongoUser?.role || 'user');
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          email: email,
-          role: role,
-          createdAt: new Date().toISOString()
-        });
+      const isSystemAdmin = email.toLowerCase() === 'admin@secureguard.com';
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (!userDoc.exists()) {
+          const lowerEmail = email.toLowerCase();
+          const role = lowerEmail.includes('admin') ? 'admin' : (mongoUser?.role || 'user');
+          await setDoc(userDocRef, {
+            uid: user.uid,
+            email: email,
+            role: role,
+            createdAt: new Date().toISOString()
+          });
+        }
+      } catch (fsErr) {
+        console.warn("Firestore user sync warning:", fsErr);
       }
 
       const securityCheck = await verifyLoginSecurity(user.uid, email);
@@ -115,11 +123,13 @@ const CompanyLoginPage: React.FC = () => {
         return;
       }
 
-      if (securityCheck.role === 'admin' || securityCheck.role === 'warehouse' || securityCheck.role === 'employee' || securityCheck.role === 'restaurant') {
+      const resolvedRole = isSystemAdmin ? 'admin' : (securityCheck.role || 'user');
+
+      if (resolvedRole === 'admin' || resolvedRole === 'warehouse' || resolvedRole === 'employee' || resolvedRole === 'restaurant') {
         const destination = `/${activeCompany}/dashboard`;
         console.log("Redirecting to:", destination);
         navigate(destination);
-      } else if (securityCheck.role === 'customer') {
+      } else if (resolvedRole === 'customer') {
         console.log(`[LOGIN] Redirecting to: /customer/dashboard`);
         navigate('/customer/dashboard');
       } else {

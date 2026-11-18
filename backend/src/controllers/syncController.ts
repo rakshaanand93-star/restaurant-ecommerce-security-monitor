@@ -5,6 +5,8 @@ import { Order } from '../models/Order';
 import { SecurityLog } from '../models/SecurityLog';
 import { Warehouse } from '../models/Warehouse';
 import { LoginActivity } from '../models/LoginActivity';
+import { saveUser, saveLoginActivity } from '../services/dataStorage';
+import { saveOrder } from '../services/orderStorage';
 
 const router = Router();
 
@@ -16,26 +18,25 @@ router.post('/sync', async (req, res) => {
   }
 
   try {
-    let savedDoc;
+    let savedDoc: any = data;
     switch (collectionName) {
       case 'users':
-        savedDoc = await User.create(data);
-        console.log("User saved to MongoDB");
+        savedDoc = await saveUser(data);
         break;
       case 'notifications':
-        savedDoc = await Notification.create(data);
+        try { savedDoc = await Notification.create(data); } catch (e) {}
         break;
       case 'orders':
-        savedDoc = await Order.create(data);
+        savedDoc = await saveOrder(data);
         break;
       case 'securitylogs':
-        savedDoc = await SecurityLog.create(data);
+        try { savedDoc = await SecurityLog.create(data); } catch (e) {}
         break;
       case 'warehouses':
-        savedDoc = await Warehouse.create(data);
+        try { savedDoc = await Warehouse.create(data); } catch (e) {}
         break;
       case 'loginactivities':
-        savedDoc = await LoginActivity.create(data);
+        savedDoc = await saveLoginActivity(data);
         break;
       default:
         return res.status(400).json({ error: `Unknown collection: ${collectionName}` });
@@ -44,7 +45,7 @@ router.post('/sync', async (req, res) => {
     res.json({ success: true, doc: savedDoc });
   } catch (error) {
     console.error(`Error syncing to ${collectionName}:`, error);
-    res.status(500).json({ error: 'Failed to sync data to MongoDB' });
+    res.status(500).json({ error: 'Failed to sync data' });
   }
 });
 

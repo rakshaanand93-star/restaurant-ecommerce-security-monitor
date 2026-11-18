@@ -190,7 +190,7 @@ export default function UserDashboard() {
   };
 
   useEffect(() => {
-    if (activeCompany === 'amazon' && (role === 'user' || role === 'USER')) {
+    if (activeCompany === 'amazon') {
       fetchData();
       
       const bc = new BroadcastChannel('dashboard_updates');
@@ -204,8 +204,8 @@ export default function UserDashboard() {
     }
   }, [currentUser, role, activeCompany]);
 
-  // If not Amazon User, render old UI to avoid breaking generic dashboards
-  if (activeCompany !== 'amazon' || (role !== 'user' && role !== 'USER')) {
+  // If not Amazon, render old UI to avoid breaking generic dashboards
+  if (activeCompany !== 'amazon') {
     return <GenericProfileView currentUser={currentUser} role={role} handleLogout={handleLogout} />;
   }
 
