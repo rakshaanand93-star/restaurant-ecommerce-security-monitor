@@ -5,7 +5,8 @@ import {
   ShoppingCart, ChevronDown, CheckCircle, Truck, PackageCheck, PlayCircle, Menu, X,
   MoreVertical, ChevronRight, Star, IndianRupee, ClipboardList, TrendingUp
 } from 'lucide-react';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { collection, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '../lib/activityLogger';
 
@@ -110,7 +111,7 @@ export default function UserDashboard() {
   const [activeTab, setActiveTab] = useState('home');
   const [isOnline, setIsOnline] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [homeOrderTab, setHomeOrderTab] = useState('New Orders');
+  const [homeOrderTab, setHomeOrderTab] = useState('Pending');
   const [historyFilter, setHistoryFilter] = useState('Today');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -158,24 +159,48 @@ export default function UserDashboard() {
     if (!isBackground) setLoading(true);
     try {
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const token = await currentUser.getIdToken();
-      const headers = { 'Authorization': `Bearer ${token}` };
+      const token = await currentUser.getIdToken().catch(() => '');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
       
-      const [ordersRes, prodRes, catRes] = await Promise.all([
-        fetch(`${backendUrl}/api/orders?employeeId=${currentUser.uid}&company=amazon`, { headers }),
-        fetch(`${backendUrl}/api/products?employeeId=${currentUser.uid}&company=amazon`, { headers }),
-        fetch(`${backendUrl}/api/categories?company=amazon`, { headers })
-      ]);
+      let ordersData: any[] = [];
+      let prodData: any[] = [];
+      let catData: any[] = [];
 
-      const [ordersData, prodData, catData] = await Promise.all([
-        ordersRes.ok ? ordersRes.json() : [],
-        prodRes.ok ? prodRes.json() : [],
-        catRes.ok ? catRes.json() : []
-      ]);
+      try {
+        const [ordersRes, prodRes, catRes] = await Promise.all([
+          fetch(`${backendUrl}/api/orders?company=amazon`, { headers }),
+          fetch(`${backendUrl}/api/products?company=amazon`, { headers }),
+          fetch(`${backendUrl}/api/categories?company=amazon`, { headers })
+        ]);
+
+        if (ordersRes.ok) ordersData = await ordersRes.json();
+        if (prodRes.ok) prodData = await prodRes.json();
+        if (catRes.ok) catData = await catRes.json();
+      } catch (beErr) {
+        console.warn("Backend unavailable, fetching from Firestore/localStorage:", beErr);
+      }
+
+      // Fallback to Firestore and localStorage
+      if (!ordersData || ordersData.length === 0) {
+        try {
+          const snap = await getDocs(collection(db, 'orders'));
+          const fsOrders = snap.docs.map(d => d.data());
+          const localSaved = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+          const combined = [...fsOrders];
+          for (const s of localSaved) {
+            if (!combined.some(o => o.orderId === s.orderId)) combined.push(s);
+          }
+          ordersData = combined.filter((o: any) => (o.company || '').toLowerCase() === (activeCompany || 'amazon'));
+        } catch (fsErr) {
+          const localSaved = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+          ordersData = localSaved.filter((o: any) => (o.company || '').toLowerCase() === (activeCompany || 'amazon'));
+        }
+      }
 
       setOrders(ordersData);
-      setProducts(prodData);
-      setCategories(catData);
+      if (prodData && prodData.length > 0) setProducts(prodData);
+      if (catData && catData.length > 0) setCategories(catData);
 
       // Compute stats
       const assigned = ordersData.filter((o: any) => o.status === 'pending' || o.status === 'assigned' || o.status === 'accepted' || o.status === 'preparing' || o.status === 'ready').length;
@@ -186,7 +211,7 @@ export default function UserDashboard() {
         assigned,
         inProgress,
         completed,
-        tasks: assigned // using assigned as total active tasks
+        tasks: assigned
       });
       
     } catch (err) {
@@ -200,6 +225,21 @@ export default function UserDashboard() {
     if (activeCompany === 'amazon') {
       fetchData();
       
+      // Real-time Firestore listener so new customer orders show up instantly
+      let unsub = () => {};
+      try {
+        unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
+          const fsOrders = snapshot.docs.map(d => d.data());
+          const localSaved = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+          const combined = [...fsOrders];
+          for (const s of localSaved) {
+            if (!combined.some(o => o.orderId === s.orderId)) combined.push(s);
+          }
+          const filtered = combined.filter((o: any) => (o.company || '').toLowerCase() === (activeCompany || 'amazon'));
+          setOrders(filtered);
+        });
+      } catch (e) {}
+
       const bc = new BroadcastChannel('dashboard_updates');
       bc.onmessage = (event) => {
         if (event.data.type === 'ORDER_COMPLETED' || event.data.type === 'ORDER_UPDATED') {
@@ -207,7 +247,10 @@ export default function UserDashboard() {
         }
       };
       
-      return () => bc.close();
+      return () => {
+        unsub();
+        bc.close();
+      };
     }
   }, [currentUser, role, activeCompany]);
 
@@ -218,10 +261,25 @@ export default function UserDashboard() {
 
   // Handle workflow updates
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    // 1. Update Firestore & Local Storage directly so UI updates without server delay
     try {
-      const token = await currentUser?.getIdToken();
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { status: newStatus, updatedAt: new Date().toISOString() });
+    } catch (fsErr) {
+      try {
+        const savedOrders = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+        const updated = savedOrders.map((o: any) => o.orderId === orderId ? { ...o, status: newStatus } : o);
+        localStorage.setItem('saved_orders', JSON.stringify(updated));
+      } catch (e) {}
+    }
+
+    setOrders(prev => prev.map(o => o.orderId === orderId ? { ...o, status: newStatus } : o));
+
+    // 2. Also notify backend if available
+    try {
+      const token = await currentUser?.getIdToken().catch(() => '');
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const res = await fetch(`${backendUrl}/api/orders/${orderId}/status`, {
+      await fetch(`${backendUrl}/api/orders/${orderId}/status`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -229,17 +287,11 @@ export default function UserDashboard() {
         },
         body: JSON.stringify({ status: newStatus })
       });
-      
-      if (res.ok) {
-        fetchData(); // refresh instantly
-        const bc = new BroadcastChannel('dashboard_updates');
-        bc.postMessage({ type: newStatus === 'completed' ? 'ORDER_COMPLETED' : 'ORDER_UPDATED' });
-        bc.close();
-        window.dispatchEvent(new Event('mongo-notification-updated'));
-      }
-    } catch (err) {
-      console.error("Error updating order status", err);
-    }
+    } catch (err) {}
+
+    const bc = new BroadcastChannel('dashboard_updates');
+    bc.postMessage({ type: newStatus === 'completed' ? 'ORDER_COMPLETED' : 'ORDER_UPDATED' });
+    bc.close();
   };
 
   const navItems = [
@@ -253,7 +305,9 @@ export default function UserDashboard() {
   // Map backend status to tab categories
   const getOrdersForTab = (tab: string) => {
     switch (tab) {
-      case 'Pending': return orders.filter(o => o.status === 'pending' || o.status === 'assigned');
+      case 'Pending':
+      case 'New Orders':
+        return orders.filter(o => o.status === 'pending' || o.status === 'assigned');
       case 'Accepted': return orders.filter(o => o.status === 'accepted');
       case 'Preparing': return orders.filter(o => o.status === 'preparing');
       case 'Ready': return orders.filter(o => o.status === 'ready');
@@ -261,7 +315,7 @@ export default function UserDashboard() {
       case 'Out for Delivery': return orders.filter(o => o.status === 'out_for_delivery' || o.status === 'shipped');
       case 'Completed': return orders.filter(o => o.status === 'completed' || o.status === 'delivered');
       case 'Rejected': return orders.filter(o => o.status === 'cancelled' || o.status === 'rejected');
-      default: return [];
+      default: return orders.filter(o => o.status === 'pending' || o.status === 'assigned');
     }
   };
 

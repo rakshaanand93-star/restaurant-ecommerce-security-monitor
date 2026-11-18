@@ -1,5 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Clock, Phone, UserCheck, Bike, CheckCircle2 } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { collection, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 const normalizeStatus = (status?: string) => {
   const s = (status || '').toLowerCase().trim();
@@ -51,11 +53,49 @@ export default function OrdersPage({ isRestaurantView, isAdmin, restaurantId, us
       if (userEmail) url += `&userEmail=${encodeURIComponent(userEmail)}`;
       if (isAdmin) url += `&admin=true`;
       
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setLiveOrders(data);
+      let fetched: any[] = [];
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          fetched = await res.json();
+        }
+      } catch (beErr) {
+        console.warn("Backend unavailable, fetching from Firestore/localStorage:", beErr);
       }
+
+      if (!fetched || fetched.length === 0) {
+        try {
+          const snap = await getDocs(collection(db, 'orders'));
+          const firestoreOrders = snap.docs.map(d => d.data());
+          const localSaved = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+          const combined = [...firestoreOrders];
+          for (const s of localSaved) {
+            if (!combined.some(o => o.orderId === s.orderId)) combined.push(s);
+          }
+
+          fetched = combined.filter((o: any) => (o.company || 'zomato').toLowerCase() === activeCompany.toLowerCase());
+          
+          if (!isAdmin && (restaurantId || userEmail)) {
+            const emailLower = (userEmail || '').toLowerCase();
+            const restTarget = emailLower.includes('restaurant1') || emailLower.includes('resturant1') ? 'REST-1001'
+              : emailLower.includes('restaurant2') || emailLower.includes('resturant2') ? 'REST-1002'
+              : emailLower.includes('restaurant3') || emailLower.includes('resturant3') ? 'REST-1003'
+              : (restaurantId || '');
+
+            if (restTarget) {
+              fetched = fetched.filter((o: any) => 
+                o.restaurantId === restTarget ||
+                o.restaurantName?.toLowerCase()?.includes(restTarget.toLowerCase().replace('rest-', 'restaurant ')) ||
+                (Array.isArray(o.items) && o.items.some((i: any) => i.restaurantId === restTarget))
+              );
+            }
+          }
+        } catch (fsErr) {
+          console.warn("Firestore fetch error:", fsErr);
+        }
+      }
+
+      setLiveOrders(fetched);
     } catch (err) {
       console.error("Failed to fetch live orders", err);
     }
@@ -85,6 +125,37 @@ export default function OrdersPage({ isRestaurantView, isAdmin, restaurantId, us
     fetchOrders();
     fetchEmployees();
     
+    // Real-time Firestore sync so new orders appear immediately
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(collection(db, 'orders'), (snapshot) => {
+        const firestoreOrders = snapshot.docs.map(d => d.data());
+        const localSaved = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+        const combined = [...firestoreOrders];
+        for (const s of localSaved) {
+          if (!combined.some(o => o.orderId === s.orderId)) combined.push(s);
+        }
+
+        let filtered = combined.filter((o: any) => (o.company || 'zomato').toLowerCase() === activeCompany.toLowerCase());
+        if (!isAdmin && (restaurantId || userEmail)) {
+          const emailLower = (userEmail || '').toLowerCase();
+          const restTarget = emailLower.includes('restaurant1') || emailLower.includes('resturant1') ? 'REST-1001'
+            : emailLower.includes('restaurant2') || emailLower.includes('resturant2') ? 'REST-1002'
+            : emailLower.includes('restaurant3') || emailLower.includes('resturant3') ? 'REST-1003'
+            : (restaurantId || '');
+
+          if (restTarget) {
+            filtered = filtered.filter((o: any) => 
+              o.restaurantId === restTarget ||
+              o.restaurantName?.toLowerCase()?.includes(restTarget.toLowerCase().replace('rest-', 'restaurant ')) ||
+              (Array.isArray(o.items) && o.items.some((i: any) => i.restaurantId === restTarget))
+            );
+          }
+        }
+        setLiveOrders(filtered);
+      });
+    } catch (e) {}
+
     // Cross-tab real-time updates
     const bc = new BroadcastChannel('dashboard_updates');
     bc.onmessage = (event) => {
@@ -94,28 +165,40 @@ export default function OrdersPage({ isRestaurantView, isAdmin, restaurantId, us
     };
     
     return () => {
+      unsub();
       bc.close();
     };
   }, [restaurantId, userEmail, isRestaurantView, isAdmin, activeCompany]);
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
+    // 1. Direct Firestore & local state update
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, { status: newStatus, updatedAt: new Date().toISOString() });
+    } catch (fsErr) {
+      try {
+        const savedOrders = JSON.parse(localStorage.getItem('saved_orders') || '[]');
+        const updated = savedOrders.map((o: any) => o.orderId === orderId ? { ...o, status: newStatus } : o);
+        localStorage.setItem('saved_orders', JSON.stringify(updated));
+      } catch (e) {}
+    }
+
+    setLiveOrders(prev => prev.map(o => o.orderId === orderId ? { ...o, status: newStatus } : o));
+
+    // 2. Also notify backend if reachable
     try {
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const res = await fetch(`${backendUrl}/api/orders/${orderId}/status`, {
+      await fetch(`${backendUrl}/api/orders/${orderId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, employeeId: restaurantId })
       });
-      if (res.ok) {
-        fetchOrders(); 
-        const bc = new BroadcastChannel('dashboard_updates');
-        bc.postMessage({ type: newStatus === 'delivered' || newStatus === 'completed' ? 'ORDER_COMPLETED' : 'ORDER_UPDATED' });
-        bc.close();
-        window.dispatchEvent(new Event('mongo-notification-updated'));
-      }
-    } catch (err) {
-      console.error("Failed to update status", err);
-    }
+    } catch (err) {}
+
+    const bc = new BroadcastChannel('dashboard_updates');
+    bc.postMessage({ type: newStatus === 'delivered' || newStatus === 'completed' ? 'ORDER_COMPLETED' : 'ORDER_UPDATED' });
+    bc.close();
+    window.dispatchEvent(new Event('mongo-notification-updated'));
   };
 
   const handleAssignOrder = async (orderId: string) => {

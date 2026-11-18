@@ -7,7 +7,7 @@ import {
   Search, Plus, Minus, CheckCircle, CreditCard
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDocs, collection } from 'firebase/firestore';
 
 export const RESTAURANT_MENUS_DATA: Record<string, any[]> = {
   'REST-1001': [
@@ -184,6 +184,22 @@ export default function CustomerDashboard() {
               merged.push(s);
             }
           }
+
+          // Also pull from Firestore so orders persist across browsers/sessions
+          try {
+            const snap = await getDocs(collection(db, 'orders'));
+            const fsOrders = snap.docs.map(d => d.data());
+            for (const fo of fsOrders) {
+              if (
+                (fo.company === activeCompany) &&
+                (fo.customerId === currentUser.uid || fo.customerEmail === currentUser.email) &&
+                !merged.some(o => o.orderId === fo.orderId)
+              ) {
+                merged.push(fo);
+              }
+            }
+          } catch (e) {}
+
           if (merged.length > 0) setOrders(merged);
         }
 
@@ -579,11 +595,19 @@ export default function CustomerDashboard() {
       // Fallback: Ensure customer order is never blocked or lost!
       const generatedId = `ORD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
       const totalAmount = cart.items.reduce((acc: number, cur: any) => acc + ((Number(cur.price) || 0) * (Number(cur.quantity) || 1)), 0);
+      const firstItem = cart.items[0] || {};
+      const restId = firstItem.restaurantId || selectedRestaurant?.restaurantId || 'REST-1001';
+      const restName = firstItem.restaurantName || selectedRestaurant?.name || 'Restaurant 1';
+      const whId = firstItem.warehouse || firstItem.warehouseId || selectedWarehouse?.name || 'Warehouse 1';
+
       const fallbackOrder = {
         orderId: generatedId,
         customerId: currentUser?.uid || 'customer_user',
         customerEmail: currentUser?.email || (isAmazon ? 'customer@amazon.com' : 'customer@zomato.com'),
         company: isAmazon ? 'amazon' : 'zomato',
+        restaurantId: isAmazon ? undefined : restId,
+        restaurantName: isAmazon ? undefined : restName,
+        warehouseId: isAmazon ? whId : undefined,
         items: cart.items,
         amount: totalAmount,
         status: 'pending',
