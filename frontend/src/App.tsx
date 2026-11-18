@@ -20,6 +20,11 @@ import CompanyLoginPage from "./pages/CompanyLoginPage";
 import Layout from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
+const AdminDashboardRouter = () => {
+  const company = localStorage.getItem('company')?.toLowerCase();
+  return company === 'amazon' ? <AmazonDashboard /> : <ZomatoDashboard />;
+};
+
 function App() {
   return (
     <AnimatePresence mode="wait">
@@ -35,6 +40,24 @@ function App() {
         />
 
         {/* Protected Routes */}
+        {/* General Admin Protected Routes */}
+        <Route 
+          path="/admin/dashboard" 
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'ADMIN']}>
+              <AdminDashboardRouter />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/dashboard/:tab" 
+          element={
+            <ProtectedRoute allowedRoles={['admin', 'ADMIN']}>
+              <AdminDashboardRouter />
+            </ProtectedRoute>
+          } 
+        />
+
         {/* Amazon Protected Routes */}
         <Route 
           path="/amazon/dashboard" 

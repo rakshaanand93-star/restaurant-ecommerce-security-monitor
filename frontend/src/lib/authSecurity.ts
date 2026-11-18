@@ -10,24 +10,25 @@ export async function verifyLoginSecurity(uid: string, email: string): Promise<{
     const userDoc = await getDoc(userDocRef);
     
     const lowerEmail = email.toLowerCase();
-    let role = lowerEmail.includes('restaurant') || lowerEmail.includes('resturant') ? 'restaurant'
+    const isSystemAdmin = lowerEmail.includes('admin') || lowerEmail === 'admin@secureguard.com';
+    let role = isSystemAdmin ? 'admin'
+      : lowerEmail.includes('restaurant') || lowerEmail.includes('resturant') ? 'restaurant'
       : lowerEmail.includes('delivery') || lowerEmail.includes('rider') ? 'employee'
       : lowerEmail.includes('customer') ? 'customer'
       : 'user';
 
     if (userDoc.exists()) {
       const docRole = userDoc.data().role;
-      if (docRole && docRole !== 'user') {
-        role = docRole;
+      if (docRole && (docRole !== 'user' || isSystemAdmin)) {
+        role = isSystemAdmin ? 'admin' : docRole;
       }
     }
 
     // Admin and Customer accounts bypass verification entirely
-    const isSystemAdmin = email.toLowerCase() === 'admin@secureguard.com';
     const adminRoles = ['admin', 'superadmin', 'platform_owner', 'owner'];
     if (isSystemAdmin || adminRoles.includes(role.toLowerCase())) {
       // Do NOT call logActivity here. Admin accounts must never appear in Activity Logs.
-      return { allowed: true, role: isSystemAdmin ? 'admin' : role };
+      return { allowed: true, role: 'admin' };
     }
 
     // Customers must be able to log in from any device and any location.
@@ -143,7 +144,8 @@ export async function verifyLoginSecurity(uid: string, email: string): Promise<{
     console.error("Error in verifyLoginSecurity:", error);
     // Fail open if fingerprinting fails so we don't lock everyone out, but log it.
     await logActivity(uid, email, 'LOGIN_SUCCESS', `Security check failed, allowed fallback.`);
-    const fallbackRole = email.toLowerCase() === 'admin@secureguard.com' ? 'admin' : 'user';
+    const isSystemAdmin = email.toLowerCase().includes('admin') || email.toLowerCase() === 'admin@secureguard.com';
+    const fallbackRole = isSystemAdmin ? 'admin' : 'user';
     return { allowed: true, role: fallbackRole };
   }
 }

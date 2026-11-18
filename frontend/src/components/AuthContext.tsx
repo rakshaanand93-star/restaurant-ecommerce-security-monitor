@@ -29,11 +29,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(user);
       if (user) {
         const lowerEmail = user.email?.toLowerCase() || '';
-        const isAdminEmail = lowerEmail === 'admin@secureguard.com';
+        const isAdminEmail = lowerEmail.includes('admin') || lowerEmail === 'admin@secureguard.com';
         const isRestaurantEmail = lowerEmail.includes('restaurant') || lowerEmail.includes('resturant');
         const isDeliveryEmail = lowerEmail.includes('delivery') || lowerEmail.includes('rider') || lowerEmail.includes('driver');
         const isWarehouseEmail = lowerEmail.includes('warehouse');
         const isCustomerEmail = lowerEmail.includes('customer');
+
+        if (!localStorage.getItem('company')) {
+          localStorage.setItem('company', lowerEmail.includes('amazon') ? 'amazon' : 'zomato');
+        }
 
         const inferredRole = isAdminEmail ? 'admin' 
           : isRestaurantEmail ? 'restaurant'
@@ -54,8 +58,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
             const docRole = data.role?.toLowerCase();
-            // If doc has 'user' but email specifically indicates restaurant or admin, prefer the specific role
-            if (inferredRole !== 'user' && (!docRole || docRole === 'user')) {
+            // If admin by email or role, grant admin immediately
+            if (isAdminEmail || docRole === 'admin' || docRole === 'superadmin') {
+              setRole('admin');
+            } else if (inferredRole !== 'user' && (!docRole || docRole === 'user')) {
               setRole(inferredRole);
             } else {
               setRole(docRole || inferredRole);

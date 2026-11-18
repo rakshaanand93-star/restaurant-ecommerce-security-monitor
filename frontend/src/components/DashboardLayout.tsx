@@ -14,7 +14,7 @@ export default function DashboardLayout({ children, userRole = 'Admin' }: Layout
   const location = useLocation();
   const { logout } = useAuth();
 
-  const activeCompany = localStorage.getItem('company')?.toLowerCase() || '';
+  const activeCompany = localStorage.getItem('company')?.toLowerCase() || 'zomato';
   const dashboardPath = userRole === 'Admin' ? `/${activeCompany}/dashboard` : "/user-dashboard";
 
   const navItems = [

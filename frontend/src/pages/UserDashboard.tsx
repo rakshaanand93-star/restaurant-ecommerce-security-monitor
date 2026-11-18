@@ -137,12 +137,19 @@ export default function UserDashboard() {
     // Redirection Logic
     if (!currentUser || !role) return;
 
-    if (activeCompany !== 'amazon') {
-      navigate(`/${activeCompany}/dashboard`);
+    const lowerRole = role.toLowerCase();
+    const isUserAdmin = lowerRole === 'admin' || lowerRole === 'superadmin' || currentUser.email?.toLowerCase().includes('admin');
+    if (isUserAdmin) {
+      const comp = activeCompany === 'amazon' ? 'amazon' : 'zomato';
+      navigate(`/${comp}/dashboard`, { replace: true });
+      return;
+    }
+
+    if (activeCompany && activeCompany !== 'amazon') {
+      navigate(`/${activeCompany}/dashboard`, { replace: true });
     } else if (role !== 'user' && role !== 'USER') {
-      if (role.toLowerCase() === 'admin') navigate('/amazon/dashboard');
-      if (role.toLowerCase() === 'manager') navigate('/manager/dashboard');
-      if (role.toLowerCase() === 'employee') navigate('/employee/dashboard');
+      if (lowerRole === 'manager') navigate('/manager/dashboard', { replace: true });
+      if (lowerRole === 'employee') navigate('/employee/dashboard', { replace: true });
     }
   }, [currentUser, role, activeCompany, navigate]);
 

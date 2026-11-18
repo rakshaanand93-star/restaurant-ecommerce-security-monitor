@@ -37,13 +37,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   if (allowedRoles && !allowedRoles.map(r => r.toLowerCase()).includes(role.toLowerCase())) {
     console.log("REDIRECT REASON: Role mismatch - user has " + role + " but route requires " + allowedRoles.join(', '));
     // If user is logged in but doesn't have the right role
-    if (role.toLowerCase() === 'admin') {
-      const activeCompany = localStorage.getItem('company')?.toLowerCase() || '';
-      return <Navigate to={`/${activeCompany}/dashboard`} replace />;
+    const isUserAdmin = role.toLowerCase() === 'admin' || role.toLowerCase() === 'superadmin' || currentUser?.email?.toLowerCase().includes('admin');
+    if (isUserAdmin) {
+      const activeCompany = localStorage.getItem('company')?.toLowerCase() || 'zomato';
+      const targetComp = activeCompany === 'amazon' ? 'amazon' : 'zomato';
+      return <Navigate to={`/${targetComp}/dashboard`} replace />;
     } else if (role.toLowerCase() === 'manager') {
       return <Navigate to="/manager/dashboard" replace />;
     } else if (role.toLowerCase() === 'employee' || role.toLowerCase() === 'restaurant') {
-      const activeCompany = localStorage.getItem('company')?.toLowerCase() || '';
+      const activeCompany = localStorage.getItem('company')?.toLowerCase() || 'zomato';
       if (activeCompany === 'zomato') return <Navigate to="/zomato/dashboard" replace />;
       return <Navigate to="/employee/dashboard" replace />;
     } else if (role.toLowerCase() === 'customer') {

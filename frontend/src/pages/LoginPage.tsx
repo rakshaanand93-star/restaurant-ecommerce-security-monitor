@@ -21,9 +21,11 @@ export const LoginPage: React.FC = () => {
     if (currentUser && role) {
       console.log("Navigating to dashboard (auto-restore)");
       const userRole = role.toUpperCase();
-      if (userRole === 'ADMIN') navigate('/admin/dashboard');
+      const isUserAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN' || currentUser.email?.toLowerCase().includes('admin');
+      const activeComp = localStorage.getItem('company')?.toLowerCase() || 'zomato';
+      if (isUserAdmin) navigate(`/${activeComp}/dashboard`);
       else if (userRole === 'MANAGER') navigate('/manager/dashboard');
-      else if (userRole === 'EMPLOYEE') navigate('/employee/dashboard');
+      else if (userRole === 'EMPLOYEE' || userRole === 'RESTAURANT') navigate(`/${activeComp}/dashboard`);
       else if (userRole === 'CUSTOMER') navigate('/customer/dashboard');
       else navigate('/user-dashboard'); // Fallback
     }
@@ -50,7 +52,7 @@ export const LoginPage: React.FC = () => {
       
       let fetchedRole = "user";
       const lowerEmail = email.toLowerCase();
-      const isSystemAdmin = lowerEmail === 'admin@secureguard.com';
+      const isSystemAdmin = lowerEmail.includes('admin') || lowerEmail === 'admin@secureguard.com';
       const inferredRole = isSystemAdmin ? 'admin'
         : lowerEmail.includes('restaurant') || lowerEmail.includes('resturant') ? 'restaurant'
         : lowerEmail.includes('delivery') || lowerEmail.includes('rider') ? 'employee'
@@ -66,7 +68,7 @@ export const LoginPage: React.FC = () => {
         if (userDoc.exists()) {
           const userData = userDoc.data();
           console.log("USER DATA:", userData);
-          fetchedRole = userData?.role?.toLowerCase() || inferredRole;
+          fetchedRole = isSystemAdmin ? 'admin' : (userData?.role?.toLowerCase() || inferredRole);
         } else {
           fetchedRole = inferredRole;
           // Auto-create doc in Firestore so user is never blocked
@@ -102,13 +104,14 @@ export const LoginPage: React.FC = () => {
       
       try {
         let route = "/user-dashboard";
-        if (fetchedRole === 'admin') {
-          route = "/admin/dashboard";
+        const currentComp = localStorage.getItem('company') || (lowerEmail.includes('amazon') ? 'amazon' : 'zomato');
+        localStorage.setItem('company', currentComp);
+        
+        if (fetchedRole === 'admin' || isSystemAdmin) {
+          route = `/${currentComp}/dashboard`;
         } else if (fetchedRole === 'manager') {
           route = "/manager/dashboard";
-        } else if (fetchedRole === 'restaurant' || fetchedRole === 'employee') {
-          const currentComp = localStorage.getItem('company') || (lowerEmail.includes('amazon') ? 'amazon' : 'zomato');
-          localStorage.setItem('company', currentComp);
+        } else if (fetchedRole === 'restaurant' || fetchedRole === 'employee' || fetchedRole === 'warehouse') {
           route = `/${currentComp}/dashboard`;
         } else if (fetchedRole === 'customer') {
           route = "/customer/dashboard";

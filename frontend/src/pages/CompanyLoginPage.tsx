@@ -70,8 +70,11 @@ const CompanyLoginPage: React.FC = () => {
       console.log("Role:", mongoUser?.role);
       console.log("Warehouse ID:", mongoUser?.warehouseId || mongoUser?._id);
 
-      // Ensure they don't cross companies (unless they are admin@secureguard.com which might be global)
-      if (mongoCompany !== 'unknown' && email.toLowerCase() !== 'admin@secureguard.com') {
+      const lowerEmail = email.toLowerCase();
+      const isSystemAdmin = lowerEmail.includes('admin') || lowerEmail === 'admin@secureguard.com';
+
+      // Ensure they don't cross companies (unless they are an admin who can access both)
+      if (mongoCompany !== 'unknown' && !isSystemAdmin) {
         if (mongoCompany !== company) {
           console.log("Validation failure: Company mismatch. Expected", company, "but got", mongoCompany);
           await auth.signOut();
@@ -88,25 +91,23 @@ const CompanyLoginPage: React.FC = () => {
       sessionStorage.clear();
 
       // Store authenticated user information locally
-      const activeCompany = mongoCompany !== 'unknown' ? mongoCompany : company;
+      const activeCompany = (mongoCompany && mongoCompany !== 'unknown') ? mongoCompany : (company || 'zomato');
       localStorage.setItem('company', activeCompany);
       localStorage.setItem('user', JSON.stringify({ email: user.email, uid: user.uid }));
 
       // Fetch role from Firestore, or create document if missing
-      const isSystemAdmin = email.toLowerCase() === 'admin@secureguard.com';
       try {
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
         
-        if (!userDoc.exists()) {
-          const lowerEmail = email.toLowerCase();
-          const role = lowerEmail.includes('admin') ? 'admin' : (mongoUser?.role || 'user');
+        if (!userDoc.exists() || (isSystemAdmin && userDoc.data()?.role !== 'admin')) {
+          const role = isSystemAdmin ? 'admin' : (mongoUser?.role || 'user');
           await setDoc(userDocRef, {
             uid: user.uid,
             email: email,
             role: role,
             createdAt: new Date().toISOString()
-          });
+          }, { merge: true });
         }
       } catch (fsErr) {
         console.warn("Firestore user sync warning:", fsErr);
@@ -123,9 +124,15 @@ const CompanyLoginPage: React.FC = () => {
         return;
       }
 
-      const resolvedRole = isSystemAdmin ? 'admin' : (securityCheck.role || 'user');
+      const resolvedRole = (isSystemAdmin || securityCheck.role?.toLowerCase() === 'admin') ? 'admin' : (securityCheck.role || 'user');
 
-      if (resolvedRole === 'admin' || resolvedRole === 'warehouse' || resolvedRole === 'employee' || resolvedRole === 'restaurant') {
+      if (resolvedRole === 'admin' || resolvedRole === 'superadmin') {
+        const targetComp = activeCompany === 'amazon' ? 'amazon' : 'zomato';
+        localStorage.setItem('company', targetComp);
+        const destination = `/${targetComp}/dashboard`;
+        console.log("Admin redirecting to:", destination);
+        navigate(destination);
+      } else if (resolvedRole === 'warehouse' || resolvedRole === 'employee' || resolvedRole === 'restaurant') {
         const destination = `/${activeCompany}/dashboard`;
         console.log("Redirecting to:", destination);
         navigate(destination);

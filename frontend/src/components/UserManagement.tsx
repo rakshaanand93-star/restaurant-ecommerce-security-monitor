@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { db, secondaryAuth } from '../lib/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { collection, query, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 
@@ -36,11 +37,40 @@ export function UserManagement({ onUserChange }: { onUserChange?: () => void }) 
   const fetchUsers = async () => {
     try {
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const currentCompany = localStorage.getItem('company')?.toLowerCase() || '';
-      const response = await fetch(`${backendUrl}/api/users?company=${currentCompany}`);
-      if (!response.ok) throw new Error('Failed to fetch users from MongoDB');
-      const mongoUsers = await response.json();
+      const currentCompany = localStorage.getItem('company')?.toLowerCase() || 'zomato';
+      let mongoUsers: any[] = [];
       
+      try {
+        const response = await fetch(`${backendUrl}/api/users?company=${currentCompany}`);
+        if (response.ok) {
+          mongoUsers = await response.json();
+        }
+      } catch (beErr) {
+        console.warn("Backend API unavailable, falling back to Firestore users:", beErr);
+      }
+      
+      if (!mongoUsers || mongoUsers.length === 0) {
+        // Resilient fallback to Firestore
+        const snapshot = await getDocs(collection(db, 'users'));
+        const firestoreUsers: UserData[] = snapshot.docs.map(d => {
+          const dat = d.data();
+          return {
+            uid: d.id,
+            name: dat.displayName || dat.name || dat.email?.split('@')[0] || 'User',
+            email: dat.email || '',
+            role: dat.role || 'employee',
+            location: dat.location || 'restaurant',
+            createdAt: dat.createdAt || new Date().toISOString(),
+            createdBy: 'admin',
+            isDisabled: !!dat.isDisabled,
+            isDeleted: !!dat.isDeleted
+          };
+        });
+        setUsers(firestoreUsers);
+        onUserChange?.();
+        return;
+      }
+
       const fetchedUsers: UserData[] = mongoUsers.map((mu: any) => ({
         uid: mu._id,
         name: mu.displayName,
@@ -69,26 +99,54 @@ export function UserManagement({ onUserChange }: { onUserChange?: () => void }) 
     setLoading(true);
 
     try {
-      const currentCompany = localStorage.getItem('company')?.toLowerCase() || '';
+      const currentCompany = localStorage.getItem('company')?.toLowerCase() || 'zomato';
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const targetRole = currentCompany === 'amazon' ? 'warehouse' : 'employee';
       
-      const response = await fetch(`${backendUrl}/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          displayName: name,
-          role: currentCompany === 'amazon' ? 'warehouse' : 'employee',
-          company: currentCompany,
-          location: location || undefined,
-          status: 'active',
-        })
-      });
+      let backendSuccess = false;
+      try {
+        const response = await fetch(`${backendUrl}/api/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            password,
+            displayName: name,
+            role: targetRole,
+            company: currentCompany,
+            location: location || undefined,
+            status: 'active',
+          })
+        });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || errData.details || 'Failed to create user');
+        if (response.ok) {
+          backendSuccess = true;
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          console.warn("Backend user creation warning:", errData);
+        }
+      } catch (beErr) {
+        console.warn("Backend unavailable, creating in Firebase Auth/Firestore directly:", beErr);
+      }
+
+      // Ensure user is created in Firebase Auth and Firestore for direct cloud authentication
+      try {
+        const userCred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+        await setDoc(doc(db, 'users', userCred.user.uid), {
+          uid: userCred.user.uid,
+          email,
+          displayName: name,
+          name,
+          role: targetRole,
+          company: currentCompany,
+          location: location || 'restaurant',
+          status: 'active',
+          createdAt: new Date().toISOString()
+        });
+      } catch (fbErr: any) {
+        if (fbErr.code !== 'auth/email-already-in-use' && !backendSuccess) {
+          throw fbErr;
+        }
       }
 
       setFormSuccess(`User ${email} created successfully.`);

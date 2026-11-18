@@ -104,7 +104,7 @@ export default function AmazonDashboard() {
               return (
                 <Link 
                   key={item} 
-                  to={`/admin/dashboard/${tabId === 'overview' ? '' : tabId}`} 
+                  to={`/amazon/dashboard/${tabId === 'overview' ? '' : tabId}`} 
                   className={`py-2.5 border-b-2 hover:text-white transition-colors ${isActive ? 'border-[#FF9900] text-white' : 'border-transparent text-gray-300 hover:border-gray-400'} whitespace-nowrap`}
                 >
                   {item}
