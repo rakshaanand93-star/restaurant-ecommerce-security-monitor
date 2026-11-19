@@ -59,6 +59,9 @@ const getWarehouseProducts = (warehouseName: string) => {
 // Zomato restaurants are removed from the random generation logic
 
 export const seedShopData = async () => {
+  if (mongoose.connection.readyState !== 1) {
+    return;
+  }
   try {
     // Amazon Categories
     const catCount = await Category.countDocuments({ company: 'amazon' });

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Notification } from '../models/Notification';
 import { User } from '../models/User';
 import { Order } from '../models/Order';
@@ -7,6 +8,9 @@ import { LoginActivity } from '../models/LoginActivity';
 import { seedShopData } from './seedShop';
 
 export const seedDatabase = async () => {
+  if (mongoose.connection.readyState !== 1) {
+    return;
+  }
   try {
     const notifCount = await Notification.countDocuments();
     if (notifCount === 0) {
